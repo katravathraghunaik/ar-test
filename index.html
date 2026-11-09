@@ -3,34 +3,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>3D Model in AR</title>
+  <title>Truss View</title>
   <script type="module"
     src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   <style>
-    html, body { margin:0; height:100%; font-family:sans-serif; background:#f2f2f2; }
-    model-viewer { width:100%; height:100%; }
-    #ar-btn {
-      position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
-      padding:14px 26px; font-size:17px; border:0; border-radius:28px;
-      background:#1a73e8; color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.3);
-    }
-    #hint { position:absolute; top:12px; width:100%; text-align:center; font-size:14px; color:#444; }
+    html, body { margin:0; height:100%; background:#8a8a8a; font-family:sans-serif; overflow:hidden; }
+    model-viewer { width:100%; height:100%; background:#8a8a8a; --poster-color:#8a8a8a; }
+    #bar { position:absolute; bottom:20px; left:0; right:0; display:flex; gap:8px;
+           justify-content:center; padding:0 8px; }
+    #bar button { flex:1; max-width:140px; padding:12px 6px; font-size:14px; border:0;
+                  border-radius:24px; background:#444; color:#fff; }
+    #bar button.active { background:#1a73e8; }
+    #note { position:absolute; top:12px; width:100%; text-align:center; font-size:13px; color:#222; }
   </style>
 </head>
 <body>
-  <div id="hint">Drag to rotate · Tap “View in AR” and point at a flat surface</div>
-  <model-viewer
+  <div id="note">Pivot View: you are standing at the marked spot</div>
+
+  <model-viewer id="mv"
     src="truss_structure.glb"
     ar
-    ar-modes="webxr scene-viewer quick-look"
-    ar-scale="auto"
+    ar-modes="webxr scene-viewer"
+    ar-scale="fixed"
     ar-placement="floor"
-    camera-controls
-    auto-rotate
-    camera-orbit="45deg 65deg auto"
-    shadow-intensity="1"
-    alt="3D model">
-    <button slot="ar-button" id="ar-btn">View in AR</button>
+    orientation="0deg 0deg 0deg"
+    camera-orbit="0deg 90deg 5m"
+    camera-target="0m 1.6m -5m"
+    field-of-view="65deg"
+    min-camera-orbit="auto auto 0.1m"
+    max-camera-orbit="auto auto 100m"
+    exposure="1"
+    interaction-prompt="none"
+    alt="Truss">
   </model-viewer>
+
+  <div id="bar">
+    <button id="b-pivot" class="active">Pivot View</button>
+    <button id="b-3d">3D Model</button>
+    <button id="b-ar">View in AR</button>
+  </div>
+
+  <script>
+    // ===== SETTINGS YOU CAN CHANGE =====
+    const EYE_HEIGHT = 1.6;   // metres above the floor
+    const LOOK_DISTANCE = 5;  // keep as is
+    // ===================================
+
+    const mv = document.getElementById('mv');
+    const bPivot = document.getElementById('b-pivot');
+    const b3d = document.getElementById('b-3d');
+    const bAr = document.getElementById('b-ar');
+    const note = document.getElementById('note');
+
+    function setActive(btn) {
+      bPivot.classList.remove('active');
+      b3d.classList.remove('active');
+      btn.classList.add('active');
+    }
+
+    function pivotView() {
+      mv.removeAttribute('camera-controls');
+      mv.cameraTarget = `0m ${EYE_HEIGHT}m -${LOOK_DISTANCE}m`;
+      mv.cameraOrbit = `0deg 90deg ${LOOK_DISTANCE}m`;
+      mv.fieldOfView = '65deg';
+      mv.jumpCameraToGoal();
+      note.textContent = 'Pivot View: you are standing at the marked spot';
+      setActive(bPivot);
+    }
+
+    function modelView() {
+      mv.setAttribute('camera-controls', '');
+      mv.cameraTarget = 'auto auto auto';
+      mv.cameraOrbit = '45deg 65deg auto';
+      mv.fieldOfView = 'auto';
+      mv.jumpCameraToGoal();
+      note.textContent = 'Drag to rotate · Pinch to zoom';
+      setActive(b3d);
+    }
+
+    bPivot.addEventListener('click', pivotView);
+    b3d.addEventListener('click', modelView);
+    bAr.addEventListener('click', () => {
+      if (mv.canActivateAR) { mv.activateAR(); }
+      else { alert('AR is not supported on this phone or browser.'); }
+    });
+  </script>
 </body>
 </html>
