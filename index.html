@@ -10,25 +10,32 @@
     html, body { margin:0; height:100%; background:#8a8a8a; font-family:sans-serif;
                  overflow:hidden; touch-action:none; }
     model-viewer { width:100%; height:100%; background:#8a8a8a; --poster-color:#8a8a8a; }
-    #bar { position:absolute; bottom:16px; left:0; right:0; display:flex; gap:6px;
-           justify-content:center; padding:0 6px; }
-    #bar button { flex:1; max-width:110px; padding:12px 4px; font-size:13px; border:0;
-                  border-radius:24px; background:#444; color:#fff; }
+    #dims { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; display:none; }
+    #dims text { font-size:13px; font-weight:bold; paint-order:stroke; stroke:#fff; stroke-width:4px;
+                 stroke-linejoin:round; text-anchor:middle; }
+    #bar { position:absolute; bottom:14px; left:0; right:0; display:flex; gap:5px;
+           justify-content:center; padding:0 5px; }
+    #bar button { flex:1; max-width:82px; padding:11px 2px; font-size:12px; border:0;
+                  border-radius:22px; background:#444; color:#fff; }
     #bar button.active { background:#1a73e8; }
     #note { position:absolute; top:8px; width:100%; text-align:center; font-size:12px;
             color:#222; pointer-events:none; }
-    #meas { position:absolute; top:30px; left:8px; max-width:250px; background:rgba(255,255,255,.93);
-            border-radius:12px; padding:8px 12px; font-size:13px; color:#111;
-            box-shadow:0 2px 8px rgba(0,0,0,.3); }
-    #meas .head { font-weight:bold; cursor:pointer; }
-    #meas .body { margin-top:6px; line-height:1.5; }
-    #meas hr { border:0; border-top:1px solid #ccc; margin:6px 0; }
-    #joy { position:absolute; left:22px; bottom:80px; width:120px; height:120px; border-radius:50%;
-           background:rgba(0,0,0,.25); border:2px solid rgba(255,255,255,.6); touch-action:none; }
-    #knob { position:absolute; left:35px; top:35px; width:50px; height:50px; border-radius:50%;
-            background:rgba(255,255,255,.85); box-shadow:0 1px 5px rgba(0,0,0,.4); pointer-events:none; }
-    #dot { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
-           background:#e53935; border:2px solid #fff; pointer-events:none; display:none; }
+    #panel { position:absolute; left:8px; right:8px; bottom:68px; display:none; gap:6px;
+             background:rgba(0,0,0,.4); border-radius:16px; padding:10px 6px;
+             justify-content:space-around; align-items:flex-end; touch-action:none; }
+    .pb { text-align:center; color:#fff; font-size:12px; }
+    .pad { position:relative; width:96px; height:96px; border-radius:50%; margin:0 auto 4px;
+           background:rgba(0,0,0,.3); border:2px solid rgba(255,255,255,.7); touch-action:none; }
+    .knob { position:absolute; left:26px; top:26px; width:44px; height:44px; border-radius:50%;
+            background:rgba(255,255,255,.9); box-shadow:0 1px 5px rgba(0,0,0,.4); pointer-events:none; }
+    .mid { display:flex; flex-direction:column; gap:8px; }
+    .mid button { padding:10px 8px; font-size:12px; border:0; border-radius:16px;
+                  background:#555; color:#fff; }
+    .mid button.on { background:#1a73e8; }
+    #start { position:absolute; inset:0; background:rgba(60,60,60,.85); display:none;
+             align-items:center; justify-content:center; }
+    #start button { padding:16px 30px; font-size:18px; border:0; border-radius:30px;
+                    background:#1a73e8; color:#fff; }
   </style>
 </head>
 <body>
@@ -47,240 +54,300 @@
     alt="Truss">
   </model-viewer>
 
-  <div id="meas">
-    <div class="head" id="meas-head">📏 Measurements ▾</div>
-    <div class="body" id="meas-body">Loading…</div>
-  </div>
+  <svg id="dims"></svg>
 
-  <div id="joy"><div id="knob"></div></div>
-  <div id="dot"></div>
+  <div id="panel">
+    <div class="pb"><div class="pad" id="padMove"><div class="knob" id="knMove"></div></div>Move</div>
+    <div class="mid">
+      <button id="b-fwd">Set Forward</button>
+      <button id="b-walk">Walk to move: Off</button>
+    </div>
+    <div class="pb"><div class="pad" id="padLook"><div class="knob" id="knLook"></div></div>Look</div>
+  </div>
 
   <div id="bar">
     <button id="b-pivot" class="active">Pivot View</button>
-    <button id="b-fwd">Set Forward</button>
+    <button id="b-ctrl">Controls</button>
+    <button id="b-meas">Measure</button>
     <button id="b-3d">3D Model</button>
     <button id="b-ar">View in AR</button>
   </div>
 
+  <div id="start"><button id="b-start">Tap to start</button></div>
+
   <script>
     // ===== SETTINGS YOU CAN CHANGE =====
-    const EYE = 1.6;     // eye height in metres
-    const SPEED = 1.5;   // walking speed in metres per second
-    const R = 1;         // keep as is
+    const EYE = 1.6;          // eye height in metres
+    const SPEED = 1.5;        // joystick walking speed, metres per second
+    const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
+    const LOOK_PITCH = 45;    // look joystick up/down speed
+    const STEP_LEN = 0.7;     // metres moved per detected step
+    const STEP_THRESH = 1.3;  // lower = more sensitive step detection
+    const R = 1;              // keep as is
     // ===================================
 
-    const mv = document.getElementById('mv');
-    const bPivot = document.getElementById('b-pivot');
-    const bFwd = document.getElementById('b-fwd');
-    const b3d = document.getElementById('b-3d');
-    const bAr = document.getElementById('b-ar');
-    const note = document.getElementById('note');
-    const joy = document.getElementById('joy');
-    const knob = document.getElementById('knob');
-    const dot = document.getElementById('dot');
-    const measBody = document.getElementById('meas-body');
+    const $ = id => document.getElementById(id);
+    const mv = $('mv'), svg = $('dims'), panel = $('panel'), note = $('note');
+    const bPivot = $('b-pivot'), bCtrl = $('b-ctrl'), bMeas = $('b-meas'), b3d = $('b-3d'), bAr = $('b-ar');
+    const bFwd = $('b-fwd'), bWalk = $('b-walk');
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const m2 = v => v.toFixed(2) + ' m (' + (v * 3.28084).toFixed(1) + ' ft)';
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
     let mode = 'pivot';
-    let px = 0, pz = 0;                          // your walked position (metres)
+    let px = 0, pz = 0;
     let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
-    let offset = null, lastHeading = 0, listening = false;
+    let sensHH = 0, sensP = 0, offset = null, lastHeading = 0;
+    let yawOff = 0, pitchOff = 0, dirty = true;
+    let listening = false, walkOn = false, dimsOn = false;
+    let pending = 0, lastStep = 0, g = 9.8;
+
+    const needsPerm = typeof DeviceOrientationEvent !== 'undefined' &&
+                      typeof DeviceOrientationEvent.requestPermission === 'function';
     const evName = ('ondeviceorientationabsolute' in window)
       ? 'deviceorientationabsolute' : 'deviceorientation';
 
-    // ---------- helpers ----------
-    const m2 = v => v.toFixed(2) + ' m (' + (v * 3.28084).toFixed(1) + ' ft)';
-
-    function setActive(btn) {
-      bPivot.classList.remove('active');
-      b3d.classList.remove('active');
-      if (btn) btn.classList.add('active');
-    }
-
-    // ---------- look around with phone motion ----------
-    function dirFromEuler(a, b, g) {
-      const d = Math.PI / 180; a *= d; b *= d; g *= d;
-      const x = -Math.sin(g)*Math.cos(a) - Math.sin(b)*Math.cos(g)*Math.sin(a);
-      const y = -Math.sin(g)*Math.sin(a) + Math.sin(b)*Math.cos(g)*Math.cos(a);
-      const z = -Math.cos(b)*Math.cos(g);
-      return { X: x, Y: z, Z: -y };
-    }
-
-    function applyView() {
-      mv.cameraTarget = `${px + view.dx*R}m ${EYE + view.dy*R}m ${pz + view.dz*R}m`;
-      mv.cameraOrbit = `${view.theta}deg ${view.phi}deg ${R}m`;
-      mv.jumpCameraToGoal();
-    }
-
-    function onMotion(e) {
-      if (e.alpha === null || e.alpha === undefined) return;
-      const v = dirFromEuler(e.alpha, e.beta, e.gamma);
-      const h = Math.atan2(v.X, -v.Z);
-      const p = Math.asin(Math.max(-1, Math.min(1, v.Y)));
-      lastHeading = h;
-      if (offset === null) offset = h;
-      const hh = h - offset;
+    // ---------- view ----------
+    function computeView() {
+      const hh = sensHH + yawOff;
+      const p = clamp(sensP + pitchOff, -1.3, 1.3);
       view.hh = hh;
       view.dx = Math.cos(p) * Math.sin(hh);
       view.dy = Math.sin(p);
       view.dz = -Math.cos(p) * Math.cos(hh);
       view.theta = Math.atan2(-view.dx, -view.dz) * 180 / Math.PI;
       view.phi = Math.acos(-view.dy) * 180 / Math.PI;
-      applyView();
+    }
+    function applyView() {
+      if (typeof mv.jumpCameraToGoal !== 'function') return;
+      mv.cameraTarget = `${px + view.dx*R}m ${EYE + view.dy*R}m ${pz + view.dz*R}m`;
+      mv.cameraOrbit = `${view.theta}deg ${view.phi}deg ${R}m`;
+      mv.jumpCameraToGoal();
     }
 
-    async function startMotion() {
+    // ---------- sensors ----------
+    function dirFromEuler(a, b, gm) {
+      const d = Math.PI / 180; a *= d; b *= d; gm *= d;
+      const x = -Math.sin(gm)*Math.cos(a) - Math.sin(b)*Math.cos(gm)*Math.sin(a);
+      const y = -Math.sin(gm)*Math.sin(a) + Math.sin(b)*Math.cos(gm)*Math.cos(a);
+      const z = -Math.cos(b)*Math.cos(gm);
+      return { X: x, Y: z, Z: -y };
+    }
+    function onOrient(e) {
+      if (e.alpha === null || e.alpha === undefined) return;
+      const v = dirFromEuler(e.alpha, e.beta, e.gamma);
+      const h = Math.atan2(v.X, -v.Z);
+      sensP = Math.asin(clamp(v.Y, -1, 1));
+      lastHeading = h;
+      if (offset === null) offset = h;
+      sensHH = h - offset;
+      dirty = true;
+    }
+    function onStep(e) {
+      if (!walkOn || mode !== 'pivot') return;
+      const a = e.accelerationIncludingGravity;
+      if (!a || a.x === null) return;
+      const m = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+      g = g * 0.95 + m * 0.05;
+      const now = performance.now();
+      if (m - g > STEP_THRESH && now - lastStep > 350) { lastStep = now; pending += STEP_LEN; }
+    }
+    async function startSensors() {
       try {
-        if (typeof DeviceOrientationEvent !== 'undefined' &&
-            typeof DeviceOrientationEvent.requestPermission === 'function') {
-          const r = await DeviceOrientationEvent.requestPermission(); // iPhone only
-          if (r !== 'granted') { note.textContent = 'Motion access denied'; return; }
+        if (needsPerm) {
+          await DeviceOrientationEvent.requestPermission();
+          if (typeof DeviceMotionEvent !== 'undefined' &&
+              typeof DeviceMotionEvent.requestPermission === 'function') {
+            await DeviceMotionEvent.requestPermission();
+          }
         }
       } catch (err) {}
-      if (!listening) { window.addEventListener(evName, onMotion, true); listening = true; }
+      if (!listening) {
+        window.addEventListener(evName, onOrient, true);
+        window.addEventListener('devicemotion', onStep, true);
+        listening = true;
+      }
     }
-    function stopMotion() {
-      window.removeEventListener(evName, onMotion, true);
+    function stopSensors() {
+      window.removeEventListener(evName, onOrient, true);
+      window.removeEventListener('devicemotion', onStep, true);
       listening = false;
     }
 
-    // ---------- joystick ----------
-    let jx = 0, jy = 0, joyId = null;
-    const MAXR = 35;
-    function joyMove(e) {
-      const r = joy.getBoundingClientRect();
-      let x = e.clientX - (r.left + r.width / 2);
-      let y = e.clientY - (r.top + r.height / 2);
-      const len = Math.hypot(x, y);
-      if (len > MAXR) { x = x / len * MAXR; y = y / len * MAXR; }
-      knob.style.left = (35 + x) + 'px';
-      knob.style.top = (35 + y) + 'px';
-      jx = x / MAXR;
-      jy = -y / MAXR;   // up = forward
+    // ---------- joysticks ----------
+    function makeJoy(pad, knob, state) {
+      const MAXR = 28; let id = null;
+      function move(e) {
+        const r = pad.getBoundingClientRect();
+        let x = e.clientX - (r.left + r.width / 2);
+        let y = e.clientY - (r.top + r.height / 2);
+        const l = Math.hypot(x, y);
+        if (l > MAXR) { x = x / l * MAXR; y = y / l * MAXR; }
+        knob.style.transform = `translate(${x}px,${y}px)`;
+        state.x = x / MAXR; state.y = -y / MAXR;
+      }
+      function end() { id = null; state.x = 0; state.y = 0; knob.style.transform = 'translate(0,0)'; }
+      pad.addEventListener('pointerdown', e => { id = e.pointerId; pad.setPointerCapture(id); move(e); e.preventDefault(); });
+      pad.addEventListener('pointermove', e => { if (e.pointerId === id) move(e); });
+      pad.addEventListener('pointerup', end);
+      pad.addEventListener('pointercancel', end);
     }
-    function joyEnd() {
-      joyId = null; jx = 0; jy = 0;
-      knob.style.left = '35px'; knob.style.top = '35px';
-    }
-    joy.addEventListener('pointerdown', e => {
-      joyId = e.pointerId; joy.setPointerCapture(e.pointerId); joyMove(e); e.preventDefault();
-    });
-    joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joyMove(e); });
-    joy.addEventListener('pointerup', joyEnd);
-    joy.addEventListener('pointercancel', joyEnd);
+    const moveS = { x:0, y:0 }, lookS = { x:0, y:0 };
+    makeJoy($('padMove'), $('knMove'), moveS);
+    makeJoy($('padLook'), $('knLook'), lookS);
 
+    // ---------- measurement lines ----------
+    let corners = null, defs = [], els = [];
+    function buildDims() {
+      const d = mv.getDimensions(), c = mv.getBoundingBoxCenter();
+      const x0 = c.x - d.x/2, x1 = c.x + d.x/2;
+      const y0 = c.y - d.y/2, y1 = c.y + d.y/2;
+      const z0 = c.z - d.z/2, z1 = c.z + d.z/2;
+      corners = { A:[x0,y0,z1], B:[x1,y0,z1], C:[x1,y0,z0], D:[x1,y1,z1] };
+      mv.querySelectorAll('.hs').forEach(n => n.remove());
+      for (const k in corners) {
+        const b = document.createElement('button');
+        b.className = 'hs';
+        b.slot = 'hotspot-' + k;
+        b.setAttribute('data-position', corners[k].map(v => v + 'm').join(' '));
+        b.setAttribute('data-normal', '0 1 0');
+        b.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;';
+        mv.appendChild(b);
+      }
+      defs = [
+        { a:'A', b:'B', color:'#e53935', label:'Width ' + m2(d.x) },
+        { a:'B', b:'C', color:'#2e7d32', label:'Depth ' + m2(d.z) },
+        { a:'B', b:'D', color:'#1565c0', label:'Height ' + m2(d.y) }
+      ];
+      svg.innerHTML = '';
+      els = defs.map(df => {
+        const l = document.createElementNS(NS, 'line');
+        l.setAttribute('stroke', df.color); l.setAttribute('stroke-width', '4');
+        l.setAttribute('stroke-linecap', 'round');
+        const t = document.createElementNS(NS, 'text');
+        t.setAttribute('fill', df.color); t.textContent = df.label;
+        svg.appendChild(l); svg.appendChild(t);
+        return { l, t };
+      });
+    }
+    function inFront(p) {
+      if (mode !== 'pivot') return true;
+      return (p[0]-px)*view.dx + (p[1]-EYE)*view.dy + (p[2]-pz)*view.dz > 0.2;
+    }
+    function drawDims() {
+      if (!dimsOn || !corners) { svg.style.display = 'none'; return; }
+      svg.style.display = 'block';
+      defs.forEach((df, i) => {
+        const ha = mv.queryHotspot('hotspot-' + df.a), hb = mv.queryHotspot('hotspot-' + df.b);
+        const { l, t } = els[i];
+        if (!ha || !hb || !inFront(corners[df.a]) || !inFront(corners[df.b])) {
+          l.style.display = 'none'; t.style.display = 'none'; return;
+        }
+        const a = ha.canvasPosition, b = hb.canvasPosition;
+        l.style.display = ''; t.style.display = '';
+        l.setAttribute('x1', a.x); l.setAttribute('y1', a.y);
+        l.setAttribute('x2', b.x); l.setAttribute('y2', b.y);
+        t.setAttribute('x', (a.x + b.x) / 2); t.setAttribute('y', (a.y + b.y) / 2 - 6);
+      });
+    }
+
+    // ---------- main loop ----------
     let lastT = performance.now();
     function tick(t) {
       const dt = Math.min(0.1, (t - lastT) / 1000);
       lastT = t;
-      if (mode === 'pivot' && (jx || jy)) {
-        const hh = view.hh;
-        const fx = Math.sin(hh),  fz = -Math.cos(hh);   // forward
-        const rx = Math.cos(hh),  rz = Math.sin(hh);    // right
-        px += (fx * jy + rx * jx) * SPEED * dt;
-        pz += (fz * jy + rz * jx) * SPEED * dt;
-        applyView();
+      if (mode === 'pivot') {
+        if (lookS.x || lookS.y) {
+          yawOff += lookS.x * LOOK_YAW * dt * Math.PI / 180;
+          pitchOff = clamp(pitchOff + lookS.y * LOOK_PITCH * dt * Math.PI / 180, -1.2, 1.2);
+          dirty = true;
+        }
+        let fwd = moveS.y * SPEED * dt, side = moveS.x * SPEED * dt;
+        if (pending > 0) { const s = Math.min(pending, 2 * dt); pending -= s; fwd += s; }
+        if (fwd || side) {
+          const hh = sensHH + yawOff;
+          px += Math.sin(hh) * fwd + Math.cos(hh) * side;
+          pz += -Math.cos(hh) * fwd + Math.sin(hh) * side;
+          dirty = true;
+        }
+        if (dirty) { computeView(); applyView(); dirty = false; }
       }
+      drawDims();
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
 
-    // ---------- measurements ----------
-    let pts = [];
-    function sizeText() {
-      const d = mv.getDimensions();
-      const length = Math.max(d.x, d.z), width = Math.min(d.x, d.z);
-      return `<b>Truss size</b><br>Length: ${m2(length)}<br>Width: ${m2(width)}<br>Height: ${m2(d.y)}`;
+    // ---------- buttons / modes ----------
+    function setActive(btn) {
+      bPivot.classList.remove('active'); b3d.classList.remove('active');
+      if (btn) btn.classList.add('active');
     }
-    function showMeasure(extra) {
-      measBody.innerHTML = sizeText() + (extra ? '<hr>' + extra : '');
-    }
-    mv.addEventListener('load', () => showMeasure('Tap on the truss to measure a point.'));
-    document.getElementById('meas-head').addEventListener('click', () => {
-      measBody.style.display = measBody.style.display === 'none' ? 'block' : 'none';
-    });
-
-    function showDot(x, y) {
-      dot.style.left = x + 'px'; dot.style.top = y + 'px'; dot.style.display = 'block';
-      clearTimeout(showDot.t);
-      showDot.t = setTimeout(() => { dot.style.display = 'none'; }, 2000);
-    }
-
-    function handleTap(x, y) {
-      const hit = mv.positionAndNormalFromPoint(x, y);
-      if (!hit) { showMeasure('Tap directly on the truss.'); return; }
-      showDot(x, y);
-      const p = hit.position;
-      const d = mv.getDimensions();
-      const c = mv.getBoundingBoxCenter();
-      const heightAbove = p.y - (c.y - d.y / 2);
-      if (pts.length >= 2) pts = [];
-      pts.push({ x: p.x, y: p.y, z: p.z });
-
-      let txt = `<b>Point ${pts.length}</b><br>Height above lowest part: ${m2(heightAbove)}`;
-      if (mode === 'pivot') {
-        const dist = Math.hypot(p.x - px, p.y - EYE, p.z - pz);
-        txt += `<br>Distance from you: ${m2(dist)}`;
-      }
-      if (pts.length === 2) {
-        const a = pts[0], b = pts[1];
-        txt += `<hr><b>Distance point 1 to 2</b><br>${m2(Math.hypot(a.x-b.x, a.y-b.y, a.z-b.z))}`
-             + `<br><small>Tap again to start over</small>`;
-      } else {
-        txt += `<br><small>Tap another point to measure between them</small>`;
-      }
-      showMeasure(txt);
-    }
-
-    // tap (not drag) on the model
-    let down = null;
-    mv.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
-    mv.addEventListener('pointerup', e => {
-      if (!down) return;
-      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
-      down = null;
-      if (moved < 8) handleTap(e.clientX, e.clientY);
-    });
-
-    // ---------- modes ----------
-    function pivotView() {
+    function pivotView(withSensors = true) {
       mode = 'pivot';
       mv.removeAttribute('camera-controls');
-      px = 0; pz = 0; offset = null;
-      view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
+      px = 0; pz = 0; offset = null; yawOff = 0; pitchOff = 0; pending = 0;
       mv.fieldOfView = '65deg';
-      applyView();
-      startMotion();
-      joy.style.display = 'block';
-      bFwd.style.display = '';
-      note.textContent = 'Turn your phone to look · Use the joystick to walk';
+      computeView(); applyView(); dirty = true;
+      if (withSensors) startSensors();
+      note.textContent = 'Turn your phone to look · Open Controls to walk';
       setActive(bPivot);
     }
-
     function modelView() {
       mode = 'model';
-      stopMotion();
-      joy.style.display = 'none';
+      stopSensors();
+      panel.style.display = 'none'; bCtrl.classList.remove('active');
       mv.setAttribute('camera-controls', '');
       mv.cameraTarget = 'auto auto auto';
       mv.cameraOrbit = '45deg 65deg auto';
       mv.fieldOfView = 'auto';
       mv.jumpCameraToGoal();
-      note.textContent = 'Drag to rotate · Pinch to zoom · Tap truss to measure';
+      note.textContent = 'Drag to rotate · Pinch to zoom';
       setActive(b3d);
     }
 
-    bPivot.addEventListener('click', pivotView);
-    bFwd.addEventListener('click', () => { offset = lastHeading; });
+    bPivot.addEventListener('click', () => pivotView(true));
     b3d.addEventListener('click', modelView);
+    bCtrl.addEventListener('click', () => {
+      if (mode !== 'pivot') return;
+      const open = panel.style.display !== 'flex';
+      panel.style.display = open ? 'flex' : 'none';
+      bCtrl.classList.toggle('active', open);
+    });
+    bMeas.addEventListener('click', () => {
+      dimsOn = !dimsOn; bMeas.classList.toggle('active', dimsOn);
+    });
+    bFwd.addEventListener('click', () => { offset = lastHeading; yawOff = 0; dirty = true; });
+    bWalk.addEventListener('click', () => {
+      walkOn = !walkOn; pending = 0;
+      bWalk.textContent = 'Walk to move: ' + (walkOn ? 'On' : 'Off');
+      bWalk.classList.toggle('on', walkOn);
+    });
     bAr.addEventListener('click', () => {
-      stopMotion();
-      joy.style.display = 'none';
+      stopSensors();
+      panel.style.display = 'none'; bCtrl.classList.remove('active');
       setActive(null);
       if (mv.canActivateAR) { mv.activateAR(); }
       else { alert('AR is not supported on this phone or browser.'); }
     });
 
-    pivotView();
+    // ---------- automatic start ----------
+    mv.addEventListener('load', () => {
+      buildDims();
+      if (mode === 'pivot') { applyView(); setTimeout(applyView, 300); }
+    });
+    customElements.whenDefined('model-viewer').then(() => {
+      if (needsPerm) {           // iPhone needs one tap to allow motion
+        pivotView(false);
+        $('start').style.display = 'flex';
+        $('b-start').addEventListener('click', () => {
+          $('start').style.display = 'none';
+          startSensors();
+        });
+      } else {
+        pivotView(true);         // Android starts immediately
+      }
+    });
   </script>
 </body>
 </html>
