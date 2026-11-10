@@ -31,7 +31,6 @@
     .mid { display:flex; flex-direction:column; gap:8px; }
     .mid button { padding:10px 8px; font-size:12px; border:0; border-radius:16px;
                   background:#555; color:#fff; }
-    .mid button.on { background:#1a73e8; }
     #start { position:absolute; inset:0; background:rgba(60,60,60,.85); display:none;
              align-items:center; justify-content:center; }
     #start button { padding:16px 30px; font-size:18px; border:0; border-radius:30px;
@@ -60,7 +59,6 @@
     <div class="pb"><div class="pad" id="padMove"><div class="knob" id="knMove"></div></div>Move</div>
     <div class="mid">
       <button id="b-fwd">Set Forward</button>
-      <button id="b-walk">Walk to move: Off</button>
     </div>
     <div class="pb"><div class="pad" id="padLook"><div class="knob" id="knLook"></div></div>Look</div>
   </div>
@@ -81,15 +79,16 @@
     const SPEED = 1.5;        // joystick walking speed, metres per second
     const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
     const LOOK_PITCH = 45;    // look joystick up/down speed
-    const STEP_LEN = 0.7;     // metres moved per detected step
-    const STEP_THRESH = 1.3;  // lower = more sensitive step detection
+    const STEP_LEN = 0.75;    // metres moved per detected step (bigger = faster)
+    const STEP_THRESH = 0.7;  // lower = more sensitive step detection
+    const WALK_RATE = 3;      // how quickly a step is applied, metres per second
     const R = 1;              // keep as is
     // ===================================
 
     const $ = id => document.getElementById(id);
     const mv = $('mv'), svg = $('dims'), panel = $('panel'), note = $('note');
     const bPivot = $('b-pivot'), bCtrl = $('b-ctrl'), bMeas = $('b-meas'), b3d = $('b-3d'), bAr = $('b-ar');
-    const bFwd = $('b-fwd'), bWalk = $('b-walk');
+    const bFwd = $('b-fwd');
 
     const NS = 'http://www.w3.org/2000/svg';
     const m2 = v => v.toFixed(2) + ' m (' + (v * 3.28084).toFixed(1) + ' ft)';
@@ -100,8 +99,8 @@
     let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
     let sensHH = 0, sensP = 0, offset = null, lastHeading = 0;
     let yawOff = 0, pitchOff = 0, dirty = true;
-    let listening = false, walkOn = false, dimsOn = false;
-    let pending = 0, lastStep = 0, g = 9.8;
+    let listening = false, dimsOn = false;
+    let pending = 0, lastStep = 0, base = 9.8, prevHp = 0;
 
     const needsPerm = typeof DeviceOrientationEvent !== 'undefined' &&
                       typeof DeviceOrientationEvent.requestPermission === 'function';
@@ -144,14 +143,20 @@
       sensHH = h - offset;
       dirty = true;
     }
+    // Step detection: always on in Pivot View
     function onStep(e) {
-      if (!walkOn || mode !== 'pivot') return;
+      if (mode !== 'pivot') return;
       const a = e.accelerationIncludingGravity;
-      if (!a || a.x === null) return;
+      if (!a || a.x === null || a.x === undefined) return;
       const m = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
-      g = g * 0.95 + m * 0.05;
+      base = base * 0.98 + m * 0.02;          // slow baseline (gravity)
+      const hp = m - base;                    // the bounce of a step
       const now = performance.now();
-      if (m - g > STEP_THRESH && now - lastStep > 350) { lastStep = now; pending += STEP_LEN; }
+      if (hp > STEP_THRESH && prevHp <= STEP_THRESH && now - lastStep > 300) {
+        lastStep = now;
+        pending = Math.min(pending + STEP_LEN, 3);
+      }
+      prevHp = hp;
     }
     async function startSensors() {
       try {
@@ -264,7 +269,7 @@
           dirty = true;
         }
         let fwd = moveS.y * SPEED * dt, side = moveS.x * SPEED * dt;
-        if (pending > 0) { const s = Math.min(pending, 2 * dt); pending -= s; fwd += s; }
+        if (pending > 0) { const s = Math.min(pending, WALK_RATE * dt); pending -= s; fwd += s; }
         if (fwd || side) {
           const hh = sensHH + yawOff;
           px += Math.sin(hh) * fwd + Math.cos(hh) * side;
@@ -290,7 +295,7 @@
       mv.fieldOfView = '65deg';
       computeView(); applyView(); dirty = true;
       if (withSensors) startSensors();
-      note.textContent = 'Turn your phone to look · Open Controls to walk';
+      note.textContent = 'Turn to look · Walk to move · Controls for joysticks';
       setActive(bPivot);
     }
     function modelView() {
@@ -318,11 +323,6 @@
       dimsOn = !dimsOn; bMeas.classList.toggle('active', dimsOn);
     });
     bFwd.addEventListener('click', () => { offset = lastHeading; yawOff = 0; dirty = true; });
-    bWalk.addEventListener('click', () => {
-      walkOn = !walkOn; pending = 0;
-      bWalk.textContent = 'Walk to move: ' + (walkOn ? 'On' : 'Off');
-      bWalk.classList.toggle('on', walkOn);
-    });
     bAr.addEventListener('click', () => {
       stopSensors();
       panel.style.display = 'none'; bCtrl.classList.remove('active');
