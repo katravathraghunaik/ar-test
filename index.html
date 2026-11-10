@@ -20,6 +20,8 @@
     #bar button.active { background:#1a73e8; }
     #note { position:absolute; top:8px; width:100%; text-align:center; font-size:12px;
             color:#222; pointer-events:none; }
+    #anim { position:absolute; top:30px; right:8px; display:none; padding:8px 12px; font-size:12px;
+            border:0; border-radius:16px; background:#444; color:#fff; }
     #panel { position:absolute; left:8px; right:8px; bottom:68px; display:none; gap:6px;
              background:rgba(0,0,0,.4); border-radius:16px; padding:10px 6px;
              justify-content:space-around; align-items:flex-end; touch-action:none; }
@@ -42,6 +44,7 @@
 
   <model-viewer id="mv"
     src="truss_structure.glb"
+    autoplay
     ar
     ar-modes="webxr scene-viewer"
     ar-scale="fixed"
@@ -54,6 +57,7 @@
   </model-viewer>
 
   <svg id="dims"></svg>
+  <button id="anim">Animation: On</button>
 
   <div id="panel">
     <div class="pb"><div class="pad" id="padMove"><div class="knob" id="knMove"></div></div>Move</div>
@@ -74,32 +78,47 @@
   <div id="start"><button id="b-start">Tap to start</button></div>
 
   <script>
-    // ===== SETTINGS YOU CAN CHANGE =====
-    const EYE = 1.6;          // eye height in metres
+    // ===== QR SPOTS: one entry per QR code =====
+    // x and z are in metres. Find them by tapping the floor in "3D Model" view.
+    // yaw = which way the visitor faces at the start (0, 90, 180 or 270).
+    // Link for each QR:  .../ar-test/?spot=A   (no ?spot= uses "default")
+    const SPOTS = {
+      default: { x: 0, z: 0, yaw: 0 },
+      A:       { x: 0, z: 0, yaw: 0 },
+      B:       { x: 5, z: -2, yaw: 90 }
+    };
+    // ===========================================
+
+    // ===== OTHER SETTINGS =====
+    const EYE = 1.6;          // eye height in metres (model floor must be at height 0)
     const SPEED = 1.5;        // joystick walking speed, metres per second
     const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
     const LOOK_PITCH = 45;    // look joystick up/down speed
-    const STEP_LEN = 0.75;    // metres moved per detected step (bigger = faster)
+    const STEP_LEN = 0.75;    // metres moved per detected step
     const STEP_THRESH = 0.7;  // lower = more sensitive step detection
     const WALK_RATE = 3;      // how quickly a step is applied, metres per second
     const R = 1;              // keep as is
-    // ===================================
+    // ==========================
+
+    const spotName = new URLSearchParams(location.search).get('spot') || 'default';
+    const SPOT = SPOTS[spotName] || SPOTS.default;
+    const baseYaw = SPOT.yaw * Math.PI / 180;
 
     const $ = id => document.getElementById(id);
     const mv = $('mv'), svg = $('dims'), panel = $('panel'), note = $('note');
     const bPivot = $('b-pivot'), bCtrl = $('b-ctrl'), bMeas = $('b-meas'), b3d = $('b-3d'), bAr = $('b-ar');
-    const bFwd = $('b-fwd');
+    const bFwd = $('b-fwd'), bAnim = $('anim');
 
     const NS = 'http://www.w3.org/2000/svg';
     const m2 = v => v.toFixed(2) + ' m (' + (v * 3.28084).toFixed(1) + ' ft)';
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
     let mode = 'pivot';
-    let px = 0, pz = 0;
+    let px = SPOT.x, pz = SPOT.z;
     let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
     let sensHH = 0, sensP = 0, offset = null, lastHeading = 0;
     let yawOff = 0, pitchOff = 0, dirty = true;
-    let listening = false, dimsOn = false;
+    let listening = false, dimsOn = false, animOn = true;
     let pending = 0, lastStep = 0, base = 9.8, prevHp = 0;
 
     const needsPerm = typeof DeviceOrientationEvent !== 'undefined' &&
@@ -108,8 +127,9 @@
       ? 'deviceorientationabsolute' : 'deviceorientation';
 
     // ---------- view ----------
+    function heading() { return sensHH + yawOff + baseYaw; }
     function computeView() {
-      const hh = sensHH + yawOff;
+      const hh = heading();
       const p = clamp(sensP + pitchOff, -1.3, 1.3);
       view.hh = hh;
       view.dx = Math.cos(p) * Math.sin(hh);
@@ -143,14 +163,13 @@
       sensHH = h - offset;
       dirty = true;
     }
-    // Step detection: always on in Pivot View
     function onStep(e) {
       if (mode !== 'pivot') return;
       const a = e.accelerationIncludingGravity;
       if (!a || a.x === null || a.x === undefined) return;
       const m = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
-      base = base * 0.98 + m * 0.02;          // slow baseline (gravity)
-      const hp = m - base;                    // the bounce of a step
+      base = base * 0.98 + m * 0.02;
+      const hp = m - base;
       const now = performance.now();
       if (hp > STEP_THRESH && prevHp <= STEP_THRESH && now - lastStep > 300) {
         lastStep = now;
@@ -271,7 +290,7 @@
         let fwd = moveS.y * SPEED * dt, side = moveS.x * SPEED * dt;
         if (pending > 0) { const s = Math.min(pending, WALK_RATE * dt); pending -= s; fwd += s; }
         if (fwd || side) {
-          const hh = sensHH + yawOff;
+          const hh = heading();
           px += Math.sin(hh) * fwd + Math.cos(hh) * side;
           pz += -Math.cos(hh) * fwd + Math.sin(hh) * side;
           dirty = true;
@@ -283,6 +302,21 @@
     }
     requestAnimationFrame(tick);
 
+    // ---------- tap floor in 3D Model view to get x, z ----------
+    let down = null;
+    mv.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+    mv.addEventListener('pointerup', e => {
+      if (!down || mode !== 'model') return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      down = null;
+      if (moved > 8) return;
+      const hit = mv.positionAndNormalFromPoint(e.clientX, e.clientY);
+      if (hit) {
+        note.textContent = 'Spot here → x: ' + hit.position.x.toFixed(2) +
+                           ', z: ' + hit.position.z.toFixed(2);
+      }
+    });
+
     // ---------- buttons / modes ----------
     function setActive(btn) {
       bPivot.classList.remove('active'); b3d.classList.remove('active');
@@ -291,7 +325,7 @@
     function pivotView(withSensors = true) {
       mode = 'pivot';
       mv.removeAttribute('camera-controls');
-      px = 0; pz = 0; offset = null; yawOff = 0; pitchOff = 0; pending = 0;
+      px = SPOT.x; pz = SPOT.z; offset = null; yawOff = 0; pitchOff = 0; pending = 0;
       mv.fieldOfView = '65deg';
       computeView(); applyView(); dirty = true;
       if (withSensors) startSensors();
@@ -307,7 +341,7 @@
       mv.cameraOrbit = '45deg 65deg auto';
       mv.fieldOfView = 'auto';
       mv.jumpCameraToGoal();
-      note.textContent = 'Drag to rotate · Pinch to zoom';
+      note.textContent = 'Drag to rotate · Pinch to zoom · Tap floor for x, z';
       setActive(b3d);
     }
 
@@ -323,6 +357,11 @@
       dimsOn = !dimsOn; bMeas.classList.toggle('active', dimsOn);
     });
     bFwd.addEventListener('click', () => { offset = lastHeading; yawOff = 0; dirty = true; });
+    bAnim.addEventListener('click', () => {
+      animOn = !animOn;
+      if (animOn) mv.play(); else mv.pause();
+      bAnim.textContent = 'Animation: ' + (animOn ? 'On' : 'Off');
+    });
     bAr.addEventListener('click', () => {
       stopSensors();
       panel.style.display = 'none'; bCtrl.classList.remove('active');
@@ -334,10 +373,13 @@
     // ---------- automatic start ----------
     mv.addEventListener('load', () => {
       buildDims();
+      if (mv.availableAnimations && mv.availableAnimations.length > 0) {
+        bAnim.style.display = 'block';
+      }
       if (mode === 'pivot') { applyView(); setTimeout(applyView, 300); }
     });
     customElements.whenDefined('model-viewer').then(() => {
-      if (needsPerm) {           // iPhone needs one tap to allow motion
+      if (needsPerm) {
         pivotView(false);
         $('start').style.display = 'flex';
         $('b-start').addEventListener('click', () => {
@@ -345,7 +387,7 @@
           startSensors();
         });
       } else {
-        pivotView(true);         // Android starts immediately
+        pivotView(true);
       }
     });
   </script>
