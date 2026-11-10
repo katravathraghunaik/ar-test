@@ -7,14 +7,28 @@
   <script type="module"
     src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   <style>
-    html, body { margin:0; height:100%; background:#8a8a8a; font-family:sans-serif; overflow:hidden; }
+    html, body { margin:0; height:100%; background:#8a8a8a; font-family:sans-serif;
+                 overflow:hidden; touch-action:none; }
     model-viewer { width:100%; height:100%; background:#8a8a8a; --poster-color:#8a8a8a; }
-    #bar { position:absolute; bottom:20px; left:0; right:0; display:flex; gap:6px;
+    #bar { position:absolute; bottom:16px; left:0; right:0; display:flex; gap:6px;
            justify-content:center; padding:0 6px; }
     #bar button { flex:1; max-width:110px; padding:12px 4px; font-size:13px; border:0;
                   border-radius:24px; background:#444; color:#fff; }
     #bar button.active { background:#1a73e8; }
-    #note { position:absolute; top:12px; width:100%; text-align:center; font-size:13px; color:#222; }
+    #note { position:absolute; top:8px; width:100%; text-align:center; font-size:12px;
+            color:#222; pointer-events:none; }
+    #meas { position:absolute; top:30px; left:8px; max-width:250px; background:rgba(255,255,255,.93);
+            border-radius:12px; padding:8px 12px; font-size:13px; color:#111;
+            box-shadow:0 2px 8px rgba(0,0,0,.3); }
+    #meas .head { font-weight:bold; cursor:pointer; }
+    #meas .body { margin-top:6px; line-height:1.5; }
+    #meas hr { border:0; border-top:1px solid #ccc; margin:6px 0; }
+    #joy { position:absolute; left:22px; bottom:80px; width:120px; height:120px; border-radius:50%;
+           background:rgba(0,0,0,.25); border:2px solid rgba(255,255,255,.6); touch-action:none; }
+    #knob { position:absolute; left:35px; top:35px; width:50px; height:50px; border-radius:50%;
+            background:rgba(255,255,255,.85); box-shadow:0 1px 5px rgba(0,0,0,.4); pointer-events:none; }
+    #dot { position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%;
+           background:#e53935; border:2px solid #fff; pointer-events:none; display:none; }
   </style>
 </head>
 <body>
@@ -33,6 +47,14 @@
     alt="Truss">
   </model-viewer>
 
+  <div id="meas">
+    <div class="head" id="meas-head">📏 Measurements ▾</div>
+    <div class="body" id="meas-body">Loading…</div>
+  </div>
+
+  <div id="joy"><div id="knob"></div></div>
+  <div id="dot"></div>
+
   <div id="bar">
     <button id="b-pivot" class="active">Pivot View</button>
     <button id="b-fwd">Set Forward</button>
@@ -41,10 +63,11 @@
   </div>
 
   <script>
-    // ===== SETTINGS =====
-    const EYE = 1.6;   // eye height in metres
-    const R = 1;       // keep as is
-    // ====================
+    // ===== SETTINGS YOU CAN CHANGE =====
+    const EYE = 1.6;     // eye height in metres
+    const SPEED = 1.5;   // walking speed in metres per second
+    const R = 1;         // keep as is
+    // ===================================
 
     const mv = document.getElementById('mv');
     const bPivot = document.getElementById('b-pivot');
@@ -52,12 +75,20 @@
     const b3d = document.getElementById('b-3d');
     const bAr = document.getElementById('b-ar');
     const note = document.getElementById('note');
+    const joy = document.getElementById('joy');
+    const knob = document.getElementById('knob');
+    const dot = document.getElementById('dot');
+    const measBody = document.getElementById('meas-body');
 
-    let offset = null;      // heading that counts as "straight along the truss"
-    let lastHeading = 0;
-    let listening = false;
+    let mode = 'pivot';
+    let px = 0, pz = 0;                          // your walked position (metres)
+    let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
+    let offset = null, lastHeading = 0, listening = false;
     const evName = ('ondeviceorientationabsolute' in window)
       ? 'deviceorientationabsolute' : 'deviceorientation';
+
+    // ---------- helpers ----------
+    const m2 = v => v.toFixed(2) + ' m (' + (v * 3.28084).toFixed(1) + ' ft)';
 
     function setActive(btn) {
       bPivot.classList.remove('active');
@@ -65,12 +96,19 @@
       if (btn) btn.classList.add('active');
     }
 
+    // ---------- look around with phone motion ----------
     function dirFromEuler(a, b, g) {
       const d = Math.PI / 180; a *= d; b *= d; g *= d;
       const x = -Math.sin(g)*Math.cos(a) - Math.sin(b)*Math.cos(g)*Math.sin(a);
       const y = -Math.sin(g)*Math.sin(a) + Math.sin(b)*Math.cos(g)*Math.cos(a);
       const z = -Math.cos(b)*Math.cos(g);
       return { X: x, Y: z, Z: -y };
+    }
+
+    function applyView() {
+      mv.cameraTarget = `${px + view.dx*R}m ${EYE + view.dy*R}m ${pz + view.dz*R}m`;
+      mv.cameraOrbit = `${view.theta}deg ${view.phi}deg ${R}m`;
+      mv.jumpCameraToGoal();
     }
 
     function onMotion(e) {
@@ -81,14 +119,13 @@
       lastHeading = h;
       if (offset === null) offset = h;
       const hh = h - offset;
-      const dx = Math.cos(p) * Math.sin(hh);
-      const dy = Math.sin(p);
-      const dz = -Math.cos(p) * Math.cos(hh);
-      const theta = Math.atan2(-dx, -dz) * 180 / Math.PI;
-      const phi = Math.acos(-dy) * 180 / Math.PI;
-      mv.cameraTarget = `${dx*R}m ${EYE + dy*R}m ${dz*R}m`;
-      mv.cameraOrbit = `${theta}deg ${phi}deg ${R}m`;
-      mv.jumpCameraToGoal();
+      view.hh = hh;
+      view.dx = Math.cos(p) * Math.sin(hh);
+      view.dy = Math.sin(p);
+      view.dz = -Math.cos(p) * Math.cos(hh);
+      view.theta = Math.atan2(-view.dx, -view.dz) * 180 / Math.PI;
+      view.phi = Math.acos(-view.dy) * 180 / Math.PI;
+      applyView();
     }
 
     async function startMotion() {
@@ -101,32 +138,134 @@
       } catch (err) {}
       if (!listening) { window.addEventListener(evName, onMotion, true); listening = true; }
     }
-
     function stopMotion() {
       window.removeEventListener(evName, onMotion, true);
       listening = false;
     }
 
+    // ---------- joystick ----------
+    let jx = 0, jy = 0, joyId = null;
+    const MAXR = 35;
+    function joyMove(e) {
+      const r = joy.getBoundingClientRect();
+      let x = e.clientX - (r.left + r.width / 2);
+      let y = e.clientY - (r.top + r.height / 2);
+      const len = Math.hypot(x, y);
+      if (len > MAXR) { x = x / len * MAXR; y = y / len * MAXR; }
+      knob.style.left = (35 + x) + 'px';
+      knob.style.top = (35 + y) + 'px';
+      jx = x / MAXR;
+      jy = -y / MAXR;   // up = forward
+    }
+    function joyEnd() {
+      joyId = null; jx = 0; jy = 0;
+      knob.style.left = '35px'; knob.style.top = '35px';
+    }
+    joy.addEventListener('pointerdown', e => {
+      joyId = e.pointerId; joy.setPointerCapture(e.pointerId); joyMove(e); e.preventDefault();
+    });
+    joy.addEventListener('pointermove', e => { if (e.pointerId === joyId) joyMove(e); });
+    joy.addEventListener('pointerup', joyEnd);
+    joy.addEventListener('pointercancel', joyEnd);
+
+    let lastT = performance.now();
+    function tick(t) {
+      const dt = Math.min(0.1, (t - lastT) / 1000);
+      lastT = t;
+      if (mode === 'pivot' && (jx || jy)) {
+        const hh = view.hh;
+        const fx = Math.sin(hh),  fz = -Math.cos(hh);   // forward
+        const rx = Math.cos(hh),  rz = Math.sin(hh);    // right
+        px += (fx * jy + rx * jx) * SPEED * dt;
+        pz += (fz * jy + rz * jx) * SPEED * dt;
+        applyView();
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // ---------- measurements ----------
+    let pts = [];
+    function sizeText() {
+      const d = mv.getDimensions();
+      const length = Math.max(d.x, d.z), width = Math.min(d.x, d.z);
+      return `<b>Truss size</b><br>Length: ${m2(length)}<br>Width: ${m2(width)}<br>Height: ${m2(d.y)}`;
+    }
+    function showMeasure(extra) {
+      measBody.innerHTML = sizeText() + (extra ? '<hr>' + extra : '');
+    }
+    mv.addEventListener('load', () => showMeasure('Tap on the truss to measure a point.'));
+    document.getElementById('meas-head').addEventListener('click', () => {
+      measBody.style.display = measBody.style.display === 'none' ? 'block' : 'none';
+    });
+
+    function showDot(x, y) {
+      dot.style.left = x + 'px'; dot.style.top = y + 'px'; dot.style.display = 'block';
+      clearTimeout(showDot.t);
+      showDot.t = setTimeout(() => { dot.style.display = 'none'; }, 2000);
+    }
+
+    function handleTap(x, y) {
+      const hit = mv.positionAndNormalFromPoint(x, y);
+      if (!hit) { showMeasure('Tap directly on the truss.'); return; }
+      showDot(x, y);
+      const p = hit.position;
+      const d = mv.getDimensions();
+      const c = mv.getBoundingBoxCenter();
+      const heightAbove = p.y - (c.y - d.y / 2);
+      if (pts.length >= 2) pts = [];
+      pts.push({ x: p.x, y: p.y, z: p.z });
+
+      let txt = `<b>Point ${pts.length}</b><br>Height above lowest part: ${m2(heightAbove)}`;
+      if (mode === 'pivot') {
+        const dist = Math.hypot(p.x - px, p.y - EYE, p.z - pz);
+        txt += `<br>Distance from you: ${m2(dist)}`;
+      }
+      if (pts.length === 2) {
+        const a = pts[0], b = pts[1];
+        txt += `<hr><b>Distance point 1 to 2</b><br>${m2(Math.hypot(a.x-b.x, a.y-b.y, a.z-b.z))}`
+             + `<br><small>Tap again to start over</small>`;
+      } else {
+        txt += `<br><small>Tap another point to measure between them</small>`;
+      }
+      showMeasure(txt);
+    }
+
+    // tap (not drag) on the model
+    let down = null;
+    mv.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+    mv.addEventListener('pointerup', e => {
+      if (!down) return;
+      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      down = null;
+      if (moved < 8) handleTap(e.clientX, e.clientY);
+    });
+
+    // ---------- modes ----------
     function pivotView() {
+      mode = 'pivot';
       mv.removeAttribute('camera-controls');
-      mv.cameraTarget = `0m ${EYE}m -${R}m`;
-      mv.cameraOrbit = `0deg 90deg ${R}m`;
+      px = 0; pz = 0; offset = null;
+      view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
       mv.fieldOfView = '65deg';
-      mv.jumpCameraToGoal();
-      offset = null;
+      applyView();
       startMotion();
-      note.textContent = 'Hold the phone upright and turn around to look';
+      joy.style.display = 'block';
+      bFwd.style.display = '';
+      note.textContent = 'Turn your phone to look · Use the joystick to walk';
       setActive(bPivot);
     }
 
     function modelView() {
+      mode = 'model';
       stopMotion();
+      joy.style.display = 'none';
       mv.setAttribute('camera-controls', '');
       mv.cameraTarget = 'auto auto auto';
       mv.cameraOrbit = '45deg 65deg auto';
       mv.fieldOfView = 'auto';
       mv.jumpCameraToGoal();
-      note.textContent = 'Drag to rotate · Pinch to zoom';
+      note.textContent = 'Drag to rotate · Pinch to zoom · Tap truss to measure';
       setActive(b3d);
     }
 
@@ -135,6 +274,7 @@
     b3d.addEventListener('click', modelView);
     bAr.addEventListener('click', () => {
       stopMotion();
+      joy.style.display = 'none';
       setActive(null);
       if (mv.canActivateAR) { mv.activateAR(); }
       else { alert('AR is not supported on this phone or browser.'); }
