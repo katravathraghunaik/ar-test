@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Truss View</title>
+  <title>Mocap Stage Truss</title>
   <script type="module"
     src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   <style>
@@ -33,31 +33,52 @@
     .mid { display:flex; flex-direction:column; gap:8px; }
     .mid button { padding:10px 8px; font-size:12px; border:0; border-radius:16px;
                   background:#555; color:#fff; }
-    #start { position:absolute; inset:0; background:rgba(60,60,60,.85); display:none;
-             align-items:center; justify-content:center; }
+    .overlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+               text-align:center; color:#fff; padding:24px; box-sizing:border-box; }
+    #loading { background:#8a8a8a; display:flex; flex-direction:column; gap:14px; font-size:16px; }
+    #lbar { width:220px; height:8px; border-radius:4px; background:rgba(255,255,255,.35); overflow:hidden; }
+    #lfill { height:100%; width:0; background:#fff; transition:width .2s; }
+    #start { background:rgba(50,50,50,.9); flex-direction:column; gap:18px; }
     #start button { padding:16px 30px; font-size:18px; border:0; border-radius:30px;
                     background:#1a73e8; color:#fff; }
+    #cd { pointer-events:none; }
+    #cd .card { background:rgba(0,0,0,.6); padding:22px 26px; border-radius:20px; }
+    #cd .big { font-size:54px; font-weight:bold; line-height:1.1; }
+    #cd .sm { font-size:16px; margin-top:8px; }
+    #setup { position:absolute; top:56px; left:8px; display:none; background:rgba(255,255,255,.95);
+             color:#111; border-radius:12px; padding:8px 10px; font-size:13px; max-width:260px; }
+    #setup button { margin-top:6px; padding:8px 12px; border:0; border-radius:12px;
+                    background:#1a73e8; color:#fff; font-size:13px; }
+    #setup code { display:block; margin-top:6px; word-break:break-all; user-select:all; }
   </style>
 </head>
 <body>
   <div id="note"></div>
 
   <model-viewer id="mv"
-    src="truss_structure.glb"
+    src="Mocap_Truss_web.glb"
     autoplay
     ar
-    ar-modes="webxr scene-viewer"
+    ar-modes="webxr scene-viewer quick-look"
     ar-scale="fixed"
     ar-placement="floor"
     min-camera-orbit="auto auto 0.1m"
-    max-camera-orbit="auto auto 100m"
+    max-camera-orbit="auto auto 200m"
     interaction-prompt="none"
     field-of-view="65deg"
-    alt="Truss">
+    alt="Mocap stage truss">
+    <div slot="progress-bar"></div>
   </model-viewer>
 
   <svg id="dims"></svg>
   <button id="anim">Animation: On</button>
+
+  <div id="setup">
+    <b>Setup mode</b><br>
+    <span id="setxt"></span>
+    <button id="b-save">Save this spot</button>
+    <code id="saved"></code>
+  </div>
 
   <div id="panel">
     <div class="pb"><div class="pad" id="padMove"><div class="knob" id="knMove"></div></div>Move</div>
@@ -75,33 +96,51 @@
     <button id="b-ar">View in AR</button>
   </div>
 
-  <div id="start"><button id="b-start">Tap to start</button></div>
+  <div id="cd" class="overlay"><div class="card">
+    <div class="sm">Stand on the marked spot and</div>
+    <div class="sm"><b>face the QR code</b></div>
+    <div class="big" id="cdn">3</div>
+    <div class="sm">Hold still</div>
+  </div></div>
+
+  <div id="start" class="overlay">
+    <div style="font-size:18px">Stand on the marked spot<br>and face the QR code</div>
+    <button id="b-start">Tap to start</button>
+  </div>
+
+  <div id="loading" class="overlay">
+    <div id="ltxt">Loading stage… 0%</div>
+    <div id="lbar"><div id="lfill"></div></div>
+  </div>
 
   <script>
-    // ===== QR SPOTS: one entry per QR code =====
-    // x and z are in metres. Find them by tapping the floor in "3D Model" view.
-    // yaw = which way the visitor faces at the start (0, 90, 180 or 270).
-    // Link for each QR:  .../ar-test/?spot=A   (no ?spot= uses "default")
+    // ===== START SPOT (one per QR code) =====
+    // x, z = metres from the CENTRE of the stage (see the guide: use ?setup=1 to find them)
+    // yaw  = compass-free direction the visitor faces at start: 0 = looking toward -z,
+    //        90 = toward +x, 180 = toward +z, 270 = toward -x
+    // Extra QR codes: add entries and use links like  .../ar-test/?spot=A
     const SPOTS = {
-      default: { x: 0, z: 0, yaw: 0 },
-      A:       { x: 0, z: 0, yaw: 0 },
-      B:       { x: 5, z: -2, yaw: 90 }
+      default: { x: -7.5, z: 10.0, yaw: 0 },
+      A:       { x: -7.5, z: 10.0, yaw: 0 }
     };
-    // ===========================================
+    // ========================================
 
     // ===== OTHER SETTINGS =====
-    const EYE = 1.6;          // eye height in metres (model floor must be at height 0)
+    const EYE = 1.6;          // eye height above the floor, metres
     const SPEED = 1.5;        // joystick walking speed, metres per second
     const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
     const LOOK_PITCH = 45;    // look joystick up/down speed
     const STEP_LEN = 0.75;    // metres moved per detected step
     const STEP_THRESH = 0.7;  // lower = more sensitive step detection
     const WALK_RATE = 3;      // how quickly a step is applied, metres per second
+    const COUNTDOWN = 3;      // seconds the visitor holds still facing the QR code
     const R = 1;              // keep as is
     // ==========================
 
-    const spotName = new URLSearchParams(location.search).get('spot') || 'default';
+    const qs = new URLSearchParams(location.search);
+    const spotName = qs.get('spot') || 'default';
     const SPOT = SPOTS[spotName] || SPOTS.default;
+    const SETUP = qs.get('setup') === '1';
     const baseYaw = SPOT.yaw * Math.PI / 180;
 
     const $ = id => document.getElementById(id);
@@ -113,13 +152,18 @@
     const m2 = v => v.toFixed(2) + ' m (' + (v * 3.28084).toFixed(1) + ' ft)';
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+    // stage geometry in the viewer's own frame (filled in when the model loads)
+    let cx = 0, cz = 0, floorY = 0;
+    const eyeY = () => floorY + EYE;
+
     let mode = 'pivot';
-    let px = SPOT.x, pz = SPOT.z;
+    let px = 0, pz = 0;
     let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
-    let sensHH = 0, sensP = 0, offset = null, lastHeading = 0;
+    let sensHH = 0, sensP = 0, offset = null, lastHeading = 0, gotSensor = false;
     let yawOff = 0, pitchOff = 0, dirty = true;
     let listening = false, dimsOn = false, animOn = true;
     let pending = 0, lastStep = 0, base = 9.8, prevHp = 0;
+    let ready = false;   // true once the visitor has finished the "face the QR code" step
 
     const needsPerm = typeof DeviceOrientationEvent !== 'undefined' &&
                       typeof DeviceOrientationEvent.requestPermission === 'function';
@@ -140,9 +184,14 @@
     }
     function applyView() {
       if (typeof mv.jumpCameraToGoal !== 'function') return;
-      mv.cameraTarget = `${px + view.dx*R}m ${EYE + view.dy*R}m ${pz + view.dz*R}m`;
+      mv.cameraTarget = `${px + view.dx*R}m ${eyeY() + view.dy*R}m ${pz + view.dz*R}m`;
       mv.cameraOrbit = `${view.theta}deg ${view.phi}deg ${R}m`;
       mv.jumpCameraToGoal();
+    }
+    function goToSpot() {
+      px = cx + SPOT.x; pz = cz + SPOT.z;
+      yawOff = 0; pitchOff = 0; pending = 0;
+      dirty = true;
     }
 
     // ---------- sensors ----------
@@ -158,13 +207,13 @@
       const v = dirFromEuler(e.alpha, e.beta, e.gamma);
       const h = Math.atan2(v.X, -v.Z);
       sensP = Math.asin(clamp(v.Y, -1, 1));
-      lastHeading = h;
+      lastHeading = h; gotSensor = true;
       if (offset === null) offset = h;
       sensHH = h - offset;
       dirty = true;
     }
     function onStep(e) {
-      if (mode !== 'pivot') return;
+      if (mode !== 'pivot' || !ready) return;
       const a = e.accelerationIncludingGravity;
       if (!a || a.x === null || a.x === undefined) return;
       const m = Math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
@@ -257,7 +306,7 @@
     }
     function inFront(p) {
       if (mode !== 'pivot') return true;
-      return (p[0]-px)*view.dx + (p[1]-EYE)*view.dy + (p[2]-pz)*view.dz > 0.2;
+      return (p[0]-px)*view.dx + (p[1]-eyeY())*view.dy + (p[2]-pz)*view.dz > 0.2;
     }
     function drawDims() {
       if (!dimsOn || !corners) { svg.style.display = 'none'; return; }
@@ -295,27 +344,19 @@
           pz += -Math.cos(hh) * fwd + Math.sin(hh) * side;
           dirty = true;
         }
-        if (dirty) { computeView(); applyView(); dirty = false; }
+        if (dirty) {
+          computeView(); applyView(); dirty = false;
+          if (SETUP) {
+            const deg = ((view.hh * 180 / Math.PI) % 360 + 360) % 360;
+            $('setxt').textContent = 'x: ' + (px - cx).toFixed(2) + '  z: ' + (pz - cz).toFixed(2) +
+                                     '  facing: ' + Math.round(deg) + '°';
+          }
+        }
       }
       drawDims();
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
-
-    // ---------- tap floor in 3D Model view to get x, z ----------
-    let down = null;
-    mv.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
-    mv.addEventListener('pointerup', e => {
-      if (!down || mode !== 'model') return;
-      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
-      down = null;
-      if (moved > 8) return;
-      const hit = mv.positionAndNormalFromPoint(e.clientX, e.clientY);
-      if (hit) {
-        note.textContent = 'Spot here → x: ' + hit.position.x.toFixed(2) +
-                           ', z: ' + hit.position.z.toFixed(2);
-      }
-    });
 
     // ---------- buttons / modes ----------
     function setActive(btn) {
@@ -325,9 +366,9 @@
     function pivotView(withSensors = true) {
       mode = 'pivot';
       mv.removeAttribute('camera-controls');
-      px = SPOT.x; pz = SPOT.z; offset = null; yawOff = 0; pitchOff = 0; pending = 0;
+      offset = null; goToSpot();
       mv.fieldOfView = '65deg';
-      computeView(); applyView(); dirty = true;
+      computeView(); applyView();
       if (withSensors) startSensors();
       note.textContent = 'Turn to look · Walk to move · Controls for joysticks';
       setActive(bPivot);
@@ -341,11 +382,11 @@
       mv.cameraOrbit = '45deg 65deg auto';
       mv.fieldOfView = 'auto';
       mv.jumpCameraToGoal();
-      note.textContent = 'Drag to rotate · Pinch to zoom · Tap floor for x, z';
+      note.textContent = 'Drag to rotate · Pinch to zoom';
       setActive(b3d);
     }
 
-    bPivot.addEventListener('click', () => pivotView(true));
+    bPivot.addEventListener('click', () => { ready = true; pivotView(true); });
     b3d.addEventListener('click', modelView);
     bCtrl.addEventListener('click', () => {
       if (mode !== 'pivot') return;
@@ -370,24 +411,64 @@
       else { alert('AR is not supported on this phone or browser.'); }
     });
 
-    // ---------- automatic start ----------
-    mv.addEventListener('load', () => {
-      buildDims();
-      if (mv.availableAnimations && mv.availableAnimations.length > 0) {
-        bAnim.style.display = 'block';
-      }
-      if (mode === 'pivot') { applyView(); setTimeout(applyView, 300); }
+    // setup mode: save the current spot
+    $('b-save').addEventListener('click', () => {
+      const deg = ((view.hh * 180 / Math.PI) % 360 + 360) % 360;
+      const yaw = (Math.round(deg / 5) * 5) % 360;
+      $('saved').textContent = 'default: { x: ' + (px - cx).toFixed(2) +
+                               ', z: ' + (pz - cz).toFixed(2) + ', yaw: ' + yaw + ' },';
     });
+
+    // ---------- start-up sequence ----------
+    mv.addEventListener('progress', e => {
+      const p = Math.round((e.detail.totalProgress || 0) * 100);
+      $('lfill').style.width = p + '%';
+      $('ltxt').textContent = 'Loading stage… ' + p + '%';
+    });
+
+    function runCountdown() {
+      if (SETUP) { finishCalibration(); return; }
+      const cd = $('cd'); cd.style.display = 'flex';
+      let n = COUNTDOWN; $('cdn').textContent = n;
+      const iv = setInterval(() => {
+        n--;
+        if (n <= 0) { clearInterval(iv); cd.style.display = 'none'; finishCalibration(); }
+        else { $('cdn').textContent = n; }
+      }, 1000);
+    }
+    function finishCalibration() {
+      // the direction the visitor faces now (toward the QR code) becomes the start direction
+      if (gotSensor) offset = lastHeading;
+      goToSpot(); sensHH = 0;
+      ready = true;
+      computeView(); applyView();
+      if (SETUP) $('setup').style.display = 'block';
+    }
+
+    let loaded = false;
+    mv.addEventListener('load', () => {
+      const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
+      cx = c.x; cz = c.z; floorY = c.y - d.y / 2;
+      buildDims();
+      if (mv.availableAnimations && mv.availableAnimations.length > 0) bAnim.style.display = 'block';
+      loaded = true;
+      $('loading').style.display = 'none';
+      goToSpot(); computeView(); applyView(); setTimeout(applyView, 300);
+      if (needsPerm) { $('start').style.display = 'flex'; }
+      else { runCountdown(); }
+    });
+
     customElements.whenDefined('model-viewer').then(() => {
+      mode = 'pivot';
+      mv.removeAttribute('camera-controls');
       if (needsPerm) {
-        pivotView(false);
-        $('start').style.display = 'flex';
-        $('b-start').addEventListener('click', () => {
+        $('b-start').addEventListener('click', async () => {
           $('start').style.display = 'none';
-          startSensors();
+          await startSensors();
+          runCountdown();
         });
       } else {
-        pivotView(true);
+        startSensors();
       }
     });
   </script>
