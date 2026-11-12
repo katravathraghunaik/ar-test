@@ -45,6 +45,14 @@
     #dims text { font-size:13px; font-weight:700; paint-order:stroke; stroke:rgba(0,0,0,.65);
       stroke-width:4px; stroke-linejoin:round; text-anchor:middle; }
 
+    /* position tool (only with ?debug=1) */
+    #dbg { position:absolute; top:calc(env(safe-area-inset-top,0px) + 66px); right:12px; display:none;
+      padding:10px 12px; border-radius:14px; font-size:12px; max-width:210px; }
+    #dbg button { margin-top:8px; width:100%; padding:9px; border:0; border-radius:12px;
+      background:#fff; color:#2a2d31; font-weight:700; font-size:12px; }
+    #dbg code { display:block; margin-top:8px; font-size:13px; font-weight:700; color:var(--accent);
+      word-break:break-word; user-select:all; }
+
     /* toast */
     #toast { position:absolute; left:50%; transform:translateX(-50%);
       bottom:calc(env(safe-area-inset-bottom,0px) + 98px); padding:9px 16px; border-radius:20px;
@@ -120,6 +128,12 @@
     <div class="row"><i style="background:#ff6b63"></i><span>Width</span><b id="mw"></b></div>
     <div class="row"><i style="background:#4cd07d"></i><span>Depth</span><b id="md"></b></div>
     <div class="row"><i style="background:#5aa9ff"></i><span>Height</span><b id="mh"></b></div>
+  </div>
+
+  <div id="dbg" class="glass">
+    <div id="dbgtxt">x 0.00 · z 0.00 · yaw 0</div>
+    <button id="b-save">Save this spot</button>
+    <code id="saved"></code>
   </div>
 
   <div id="toast" class="glass"></div>
@@ -364,6 +378,15 @@
       });
     }
 
+    function curYaw() { return ((view.hh * 180 / Math.PI) % 360 + 360) % 360; }
+    if (DEBUG) {
+      $('dbg').style.display = 'block';
+      $('b-save').addEventListener('click', () => {
+        const yaw = (Math.round(curYaw() / 5) * 5) % 360;
+        $('saved').textContent = '{ x: ' + (px - cx).toFixed(2) + ', z: ' + (pz - cz).toFixed(2) + ', yaw: ' + yaw + ' }';
+      });
+    }
+
     // ---------- main loop ----------
     let lastT = performance.now();
     function tick(t) {
@@ -385,8 +408,8 @@
         }
         if (dirty && ready) {
           computeView(); applyView(); dirty = false;
-          if (DEBUG) toastEl.textContent = 'x ' + (px - cx).toFixed(2) + '  z ' + (pz - cz).toFixed(2) +
-            '  yaw ' + Math.round(((view.hh * 180 / Math.PI) % 360 + 360) % 360), toastEl.classList.add('show');
+          if (DEBUG) $('dbgtxt').textContent = 'x ' + (px - cx).toFixed(2) + ' · z ' + (pz - cz).toFixed(2) +
+            ' · yaw ' + Math.round(curYaw());
         }
       }
       drawDims();
