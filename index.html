@@ -139,7 +139,11 @@
 
     const qs = new URLSearchParams(location.search);
     const spotName = qs.get('spot') || 'default';
-    const SPOT = SPOTS[spotName] || SPOTS.default;
+    const SPOT = Object.assign({}, SPOTS[spotName] || SPOTS.default);
+    // Test values straight from the link, e.g.  ?x=-8&z=9.5&yaw=270   (no editing needed)
+    if (qs.get('x') !== null && !isNaN(parseFloat(qs.get('x')))) SPOT.x = parseFloat(qs.get('x'));
+    if (qs.get('z') !== null && !isNaN(parseFloat(qs.get('z')))) SPOT.z = parseFloat(qs.get('z'));
+    if (qs.get('yaw') !== null && !isNaN(parseFloat(qs.get('yaw')))) SPOT.yaw = parseFloat(qs.get('yaw'));
     const SETUP = qs.get('setup') === '1';
     const baseYaw = SPOT.yaw * Math.PI / 180;
 
