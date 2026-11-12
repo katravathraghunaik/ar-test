@@ -45,14 +45,6 @@
     #dims text { font-size:13px; font-weight:700; paint-order:stroke; stroke:rgba(0,0,0,.65);
       stroke-width:4px; stroke-linejoin:round; text-anchor:middle; }
 
-    /* position tool (only with ?debug=1) */
-    #dbg { position:absolute; top:calc(env(safe-area-inset-top,0px) + 66px); right:12px; display:none;
-      padding:10px 12px; border-radius:14px; font-size:12px; max-width:210px; }
-    #dbg button { margin-top:8px; width:100%; padding:9px; border:0; border-radius:12px;
-      background:#fff; color:#2a2d31; font-weight:700; font-size:12px; }
-    #dbg code { display:block; margin-top:8px; font-size:13px; font-weight:700; color:var(--accent);
-      word-break:break-word; user-select:all; }
-
     /* toast */
     #toast { position:absolute; left:50%; transform:translateX(-50%);
       bottom:calc(env(safe-area-inset-bottom,0px) + 98px); padding:9px 16px; border-radius:20px;
@@ -74,6 +66,14 @@
     #jpanel { position:absolute; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 92px);
       display:none; justify-content:space-between; align-items:flex-end; padding:12px 18px 8px;
       border-radius:24px; touch-action:none; max-width:420px; margin:0 auto; }
+    .jmid { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+      gap:8px; padding:0 8px 28px; min-width:0; text-align:center; }
+    #jvals { font-size:11px; opacity:.85; line-height:1.4; }
+    #b-lock { display:flex; align-items:center; gap:6px; border:0; border-radius:20px; padding:10px 14px;
+      background:#fff; color:#2a2d31; font-size:12px; font-weight:700; }
+    #b-lock svg { width:16px; height:16px; }
+    #jlock { font-size:10.5px; color:var(--accent); line-height:1.35; min-height:14px; }
+    .pill { width:auto; padding:0 14px; border-radius:21px; gap:7px; font-size:12px; font-weight:600; }
     .jb { text-align:center; font-size:11px; font-weight:600; letter-spacing:.08em; opacity:.95; }
     .pad { position:relative; width:104px; height:104px; border-radius:50%; margin:0 auto 6px;
       background:rgba(255,255,255,.1); border:1.5px solid rgba(255,255,255,.45); touch-action:none; }
@@ -117,8 +117,9 @@
     <div id="brand" class="glass"><b>MOCAP STAGE</b><span id="sub">Stage view</span></div>
     <div id="tr">
       <button id="anim" class="glass round">Animation: On</button>
-      <button id="b-reset" class="glass round" aria-label="Reset view">
+      <button id="b-reset" class="glass round pill" aria-label="Go to pivot">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+        Pivot
       </button>
     </div>
   </div>
@@ -130,16 +131,18 @@
     <div class="row"><i style="background:#5aa9ff"></i><span>Height</span><b id="mh"></b></div>
   </div>
 
-  <div id="dbg" class="glass">
-    <div id="dbgtxt">x 0.00 · z 0.00 · yaw 0</div>
-    <button id="b-save">Save this spot</button>
-    <code id="saved"></code>
-  </div>
-
   <div id="toast" class="glass"></div>
 
   <div id="jpanel" class="glass">
     <div class="jb"><div class="pad" id="padMove"><div class="knob" id="knMove"></div></div>MOVE</div>
+    <div class="jmid">
+      <div id="jvals"></div>
+      <button id="b-lock">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0112 3.5 6.5 6.5 0 0118.5 10c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>
+        Lock Pivot
+      </button>
+      <div id="jlock"></div>
+    </div>
     <div class="jb"><div class="pad" id="padLook"><div class="knob" id="knLook"></div></div>LOOK</div>
   </div>
 
@@ -182,7 +185,7 @@
     // ===== START POINT (locked) =====
     // x, z = metres from the CENTRE of the stage.  yaw = direction faced at the start:
     // 0 = toward -z, 90 = toward +x, 180 = toward +z, 270 = toward -x.
-    const SPOT = { x: -7.0, z: 7.6, yaw: 0 };
+    const SPOT = { x: -11.03, z: -4.89, yaw: 32 };
     // ================================
 
     // ===== SETTINGS =====
@@ -190,6 +193,7 @@
     const STEP_LEN = 0.75;    // metres moved per detected step (Motion button)
     const STEP_THRESH = 0.7;  // lower = more sensitive step detection
     const WALK_RATE = 3;      // how quickly a step is applied, metres per second
+    const SHOW_VALUES = true;  // show x, z and direction between the joysticks
     const SPEED = 1.5;        // joystick walking speed, metres per second
     const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
     const LOOK_PITCH = 45;    // look joystick up/down speed
@@ -199,7 +203,6 @@
     // Testing only: change the start from the link, e.g.  ?x=-8&z=9&yaw=270  (add &debug=1 to see numbers)
     const qs = new URLSearchParams(location.search);
     ['x', 'z', 'yaw'].forEach(k => { const v = parseFloat(qs.get(k)); if (!isNaN(v)) SPOT[k] = v; });
-    const DEBUG = qs.get('debug') === '1';
     const baseYaw = SPOT.yaw * Math.PI / 180;
 
     const $ = id => document.getElementById(id);
@@ -378,15 +381,28 @@
       });
     }
 
-    function curYaw() { return ((view.hh * 180 / Math.PI) % 360 + 360) % 360; }
-    if (DEBUG) {
-      $('dbg').style.display = 'block';
-      $('b-save').addEventListener('click', () => {
-        const yaw = (Math.round(curYaw() / 5) * 5) % 360;
-        $('saved').textContent = '{ x: ' + (px - cx).toFixed(2) + ', z: ' + (pz - cz).toFixed(2) + ', yaw: ' + yaw + ' }';
-      });
+    // Pivot lock: remembered on this phone only. The Pivot button returns here.
+    let pivot = null;
+    try { pivot = JSON.parse(localStorage.getItem('stagePivot') || 'null'); } catch (e) {}
+    function pivotText(v) { return 'x ' + v.x.toFixed(2) + ' · z ' + v.z.toFixed(2) + ' · ' + Math.round(v.yaw) + '°'; }
+    if (pivot) $('jlock').textContent = 'Locked: ' + pivotText(pivot);
+    function goToPivot() {
+      mode = 'look'; mv.removeAttribute('camera-controls'); mv.fieldOfView = '65deg';
+      px = cx + pivot.x; pz = cz + pivot.z; pending = 0; pitchOff = 0;
+      let d = pivot.yaw * Math.PI / 180 - sensHH - baseYaw;     // face the locked direction
+      yawOff = Math.atan2(Math.sin(d), Math.cos(d));
+      ready = true; computeView(); applyView(); dirty = true;
+      $('sub').textContent = 'Stage view';
+      b3d.classList.remove('on'); bMotion.classList.remove('dim'); $('b-joy').classList.remove('dim');
     }
-
+    $('b-lock').addEventListener('click', () => {
+      if (mode !== 'look') return;
+      pivot = { x: px - cx, z: pz - cz, yaw: curYaw() };
+      try { localStorage.setItem('stagePivot', JSON.stringify(pivot)); } catch (e) {}
+      $('jlock').textContent = 'Locked: ' + pivotText(pivot);
+      toast('Pivot locked here');
+    });
+    function curYaw() { return ((view.hh * 180 / Math.PI) % 360 + 360) % 360; }
     // ---------- main loop ----------
     let lastT = performance.now();
     function tick(t) {
@@ -408,8 +424,8 @@
         }
         if (dirty && ready) {
           computeView(); applyView(); dirty = false;
-          if (DEBUG) $('dbgtxt').textContent = 'x ' + (px - cx).toFixed(2) + ' · z ' + (pz - cz).toFixed(2) +
-            ' · yaw ' + Math.round(curYaw());
+          if (SHOW_VALUES) $('jvals').textContent = 'x ' + (px - cx).toFixed(2) + '  ·  z ' + (pz - cz).toFixed(2) +
+            '  ·  ' + Math.round(curYaw()) + '°';
         }
       }
       drawDims();
@@ -454,9 +470,10 @@
     }
 
     b3d.addEventListener('click', () => { if (mode === 'look') toOrbit(); else toStage(); });
-    $('b-reset').addEventListener('click', () => {
-      if (mode === 'orbit') { toStage(); } else { enterStage(); }
-      toast('View reset to the start point');
+    $('b-reset').addEventListener('click', async () => {
+      if (mode === 'orbit') await toStage();
+      if (pivot) { goToPivot(); toast('Back at your locked pivot'); }
+      else { enterStage(); toast('Back at the start point'); }
     });
     $('b-joy').addEventListener('click', () => {
       if (mode !== 'look') return;
