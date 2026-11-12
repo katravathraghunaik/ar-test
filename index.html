@@ -57,10 +57,20 @@
       border-radius:28px; width:calc(100% - 24px); max-width:420px; }
     #dock button { flex:1; border:0; background:transparent; color:#fff; border-radius:22px;
       padding:9px 2px 8px; display:flex; flex-direction:column; align-items:center; gap:4px;
-      font-size:11px; font-weight:600; letter-spacing:.02em; transition:background .2s, opacity .2s; }
+      font-size:10.5px; font-weight:600; letter-spacing:.02em; transition:background .2s, opacity .2s; }
     #dock button svg { width:23px; height:23px; }
     #dock button.on { background:rgba(255,255,255,.2); color:var(--accent); }
     #dock button.dim { opacity:.35; }
+
+    /* joystick panel */
+    #jpanel { position:absolute; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 92px);
+      display:none; justify-content:space-between; align-items:flex-end; padding:12px 18px 8px;
+      border-radius:24px; touch-action:none; max-width:420px; margin:0 auto; }
+    .jb { text-align:center; font-size:11px; font-weight:600; letter-spacing:.08em; opacity:.95; }
+    .pad { position:relative; width:104px; height:104px; border-radius:50%; margin:0 auto 6px;
+      background:rgba(255,255,255,.1); border:1.5px solid rgba(255,255,255,.45); touch-action:none; }
+    .knob { position:absolute; left:30px; top:30px; width:44px; height:44px; border-radius:50%;
+      background:rgba(255,255,255,.92); box-shadow:0 2px 8px rgba(0,0,0,.4); pointer-events:none; }
 
     /* overlays */
     .ov { position:absolute; inset:0; display:none; flex-direction:column; align-items:center;
@@ -114,6 +124,11 @@
 
   <div id="toast" class="glass"></div>
 
+  <div id="jpanel" class="glass">
+    <div class="jb"><div class="pad" id="padMove"><div class="knob" id="knMove"></div></div>MOVE</div>
+    <div class="jb"><div class="pad" id="padLook"><div class="knob" id="knLook"></div></div>LOOK</div>
+  </div>
+
   <div id="dock" class="glass">
     <button id="b-meas">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="8" width="20" height="8" rx="1.5"/><path d="M6 8v3M10 8v4M14 8v3M18 8v4"/></svg>
@@ -122,6 +137,10 @@
     <button id="b-motion">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4.5" r="1.8"/><path d="M9 21l2.2-6-2.7-2.5 1.2-4.2 3.5 1.2 2.6 2.8M11.2 15l3.8 1.5 1 4.5M7 9.5l3.7-2"/></svg>
       Motion
+    </button>
+    <button id="b-joy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 8h11a4.5 4.5 0 014.4 5.5l-.7 3a2.6 2.6 0 01-4.4 1.2L15 15.5H9l-1.8 2.2a2.6 2.6 0 01-4.4-1.2l-.7-3A4.5 4.5 0 016.5 8z"/><path d="M8 10.5v3M6.5 12h3"/><circle cx="15.5" cy="11" r=".6" fill="currentColor"/><circle cx="17.5" cy="13" r=".6" fill="currentColor"/></svg>
+      Joystick
     </button>
     <button id="b-3d">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M12 12l8.5-4.7M12 12v9.5M12 12L3.5 7.3"/></svg>
@@ -149,7 +168,7 @@
     // ===== START POINT (locked) =====
     // x, z = metres from the CENTRE of the stage.  yaw = direction faced at the start:
     // 0 = toward -z, 90 = toward +x, 180 = toward +z, 270 = toward -x.
-    const SPOT = { x: -7.0, z: 10.5, yaw: 0 };
+    const SPOT = { x: -7.0, z: 7.6, yaw: 0 };
     // ================================
 
     // ===== SETTINGS =====
@@ -157,6 +176,9 @@
     const STEP_LEN = 0.75;    // metres moved per detected step (Motion button)
     const STEP_THRESH = 0.7;  // lower = more sensitive step detection
     const WALK_RATE = 3;      // how quickly a step is applied, metres per second
+    const SPEED = 1.5;        // joystick walking speed, metres per second
+    const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
+    const LOOK_PITCH = 45;    // look joystick up/down speed
     const R = 1;              // keep as is
     // ====================
 
@@ -181,6 +203,7 @@
     let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
     let sensHH = 0, sensP = 0, offset = null, lastHeading = 0, gotSensor = false;
     let dirty = true, listening = false, ready = false;
+    let yawOff = 0, pitchOff = 0;
     let motionOn = false, dimsOn = false, animOn = true;
     let pending = 0, lastStep = 0, base = 9.8, prevHp = 0;
 
@@ -196,8 +219,8 @@
 
     // ---------- camera ----------
     function computeView() {
-      const hh = sensHH + baseYaw;
-      const p = clamp(sensP, -1.3, 1.3);
+      const hh = sensHH + yawOff + baseYaw;
+      const p = clamp(sensP + pitchOff, -1.3, 1.3);
       view.hh = hh;
       view.dx = Math.cos(p) * Math.sin(hh);
       view.dy = Math.sin(p);
@@ -211,7 +234,7 @@
       mv.cameraOrbit = `${view.theta}deg ${view.phi}deg ${R}m`;
       mv.jumpCameraToGoal();
     }
-    function goToSpot() { px = cx + SPOT.x; pz = cz + SPOT.z; pending = 0; dirty = true; }
+    function goToSpot() { px = cx + SPOT.x; pz = cz + SPOT.z; pending = 0; yawOff = 0; pitchOff = 0; dirty = true; }
 
     // ---------- sensors ----------
     function dirFromEuler(a, b, gm) {
@@ -265,6 +288,27 @@
       window.removeEventListener('devicemotion', onStep, true);
       listening = false;
     }
+
+    // ---------- joysticks ----------
+    function makeJoy(pad, knob, state) {
+      const MAXR = 30; let id = null;
+      function move(e) {
+        const r = pad.getBoundingClientRect();
+        let x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height / 2);
+        const l = Math.hypot(x, y);
+        if (l > MAXR) { x = x / l * MAXR; y = y / l * MAXR; }
+        knob.style.transform = `translate(${x}px,${y}px)`;
+        state.x = x / MAXR; state.y = -y / MAXR;
+      }
+      function end() { id = null; state.x = 0; state.y = 0; knob.style.transform = 'translate(0,0)'; }
+      pad.addEventListener('pointerdown', e => { id = e.pointerId; pad.setPointerCapture(id); move(e); e.preventDefault(); });
+      pad.addEventListener('pointermove', e => { if (e.pointerId === id) move(e); });
+      pad.addEventListener('pointerup', end);
+      pad.addEventListener('pointercancel', end);
+    }
+    const moveS = { x:0, y:0 }, lookS = { x:0, y:0 };
+    makeJoy($('padMove'), $('knMove'), moveS);
+    makeJoy($('padLook'), $('knLook'), lookS);
 
     // ---------- measurement lines ----------
     let corners = null, defs = [], els = [];
@@ -326,10 +370,18 @@
       const dt = Math.min(0.1, (t - lastT) / 1000);
       lastT = t;
       if (mode === 'look') {
-        if (motionOn && pending > 0) {
-          const s = Math.min(pending, WALK_RATE * dt); pending -= s;
-          const hh = sensHH + baseYaw;
-          px += Math.sin(hh) * s; pz += -Math.cos(hh) * s; dirty = true;
+        if (lookS.x || lookS.y) {
+          yawOff += lookS.x * LOOK_YAW * dt * Math.PI / 180;
+          pitchOff = clamp(pitchOff + lookS.y * LOOK_PITCH * dt * Math.PI / 180, -1.2, 1.2);
+          dirty = true;
+        }
+        let fwd = moveS.y * SPEED * dt, side = moveS.x * SPEED * dt;
+        if (motionOn && pending > 0) { const s = Math.min(pending, WALK_RATE * dt); pending -= s; fwd += s; }
+        if (fwd || side) {
+          const hh = sensHH + yawOff + baseYaw;
+          px += Math.sin(hh) * fwd + Math.cos(hh) * side;
+          pz += -Math.cos(hh) * fwd + Math.sin(hh) * side;
+          dirty = true;
         }
         if (dirty && ready) {
           computeView(); applyView(); dirty = false;
@@ -352,7 +404,7 @@
       goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
       $('sub').textContent = 'Stage view';
-      b3d.classList.remove('on'); bMotion.classList.remove('dim');
+      b3d.classList.remove('on'); bMotion.classList.remove('dim'); $('b-joy').classList.remove('dim');
     }
     async function toOrbit() {
       mode = 'orbit';
@@ -363,7 +415,8 @@
       mv.fieldOfView = 'auto';
       mv.jumpCameraToGoal();
       $('sub').textContent = '3D view · drag to rotate, pinch to zoom';
-      b3d.classList.add('on'); bMotion.classList.add('dim');
+      b3d.classList.add('on'); bMotion.classList.add('dim'); $('b-joy').classList.add('dim');
+      $('jpanel').style.display = 'none'; $('b-joy').classList.remove('on');
     }
     async function toStage() {
       await startSensors();
@@ -374,13 +427,19 @@
       sensHH = 0; sensP = 0; goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
       $('sub').textContent = 'Stage view';
-      b3d.classList.remove('on'); bMotion.classList.remove('dim');
+      b3d.classList.remove('on'); bMotion.classList.remove('dim'); $('b-joy').classList.remove('dim');
     }
 
     b3d.addEventListener('click', () => { if (mode === 'look') toOrbit(); else toStage(); });
     $('b-reset').addEventListener('click', () => {
       if (mode === 'orbit') { toStage(); } else { enterStage(); }
       toast('View reset to the start point');
+    });
+    $('b-joy').addEventListener('click', () => {
+      if (mode !== 'look') return;
+      const open = $('jpanel').style.display !== 'flex';
+      $('jpanel').style.display = open ? 'flex' : 'none';
+      $('b-joy').classList.toggle('on', open);
     });
     bMotion.addEventListener('click', () => {
       if (mode !== 'look') return;
