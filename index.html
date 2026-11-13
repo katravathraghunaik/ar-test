@@ -121,7 +121,7 @@
   <video id="cam" playsinline muted autoplay></video>
   <div id="scene">
   <model-viewer id="mv"
-    src="Mocap_Truss_stage.glb?v=6"
+    src="Mocap_Truss_stage.glb?v=7"
     autoplay
     min-camera-orbit="auto 0deg 0.1m"
     max-camera-orbit="auto 180deg 200m"
@@ -227,6 +227,14 @@
     const FOV_START = 40;     // starting field of view in degrees (higher = wider)
     const FOV_MIN = 30, FOV_MAX = 110;   // pinch limits
     // ====================
+
+    // ===== LOGO BOARDS =====
+    // The 24 boards in the model show a placeholder until you put your own logo files next to index.html, named:
+    //   logo_annapurna.png   logo_mihira.png   logo_animatrik.png      (.png .jpg .jpeg .webp .svg all work)
+    // Each logo is fitted onto a plate of this colour (use '#ffffff' for dark logos, '#111111' for white logos).
+    const LOGO_PLATE = '#ffffff';
+    const LOGO_FILES = { Annapurna: 'logo_annapurna', Mihira: 'logo_mihira', Animatrik: 'logo_animatrik' };
+    // =======================
 
     // Testing only: change the start from the link, e.g.  ?x=-8&z=9&yaw=270
     const qs = new URLSearchParams(location.search);
@@ -564,6 +572,25 @@
     const LED_RED = [0.90, 0.05, 0.07], LED_BLUE = [0.05, 0.25, 1.0];
     const LED_PERIOD = 6;                    // seconds for one full red -> blue -> red cycle (higher = slower)
     let ledMat = null, ledLast = 0;
+    function tryImage(url) { return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = url; }); }
+    async function loadLogos() {
+      const mats = (mv.model && mv.model.materials) || [];
+      for (const name of Object.keys(LOGO_FILES)) {
+        try {
+          const mat = mats.find(m => m.name === 'Logo_' + name); if (!mat) continue;
+          let im = null;
+          for (const ext of ['png', 'jpg', 'jpeg', 'webp', 'svg']) { im = await tryImage(LOGO_FILES[name] + '.' + ext); if (im) break; }
+          if (!im) continue;                                   // no file yet: the placeholder stays
+          const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+          const g = c.getContext('2d'); g.fillStyle = LOGO_PLATE; g.fillRect(0, 0, 1024, 512);
+          const iw = im.naturalWidth || 512, ih = im.naturalHeight || 256, pad = 48;
+          const k = Math.min((1024 - 2 * pad) / iw, (512 - 2 * pad) / ih), w = iw * k, h = ih * k;
+          g.drawImage(im, (1024 - w) / 2, (512 - h) / 2, w, h);
+          const tex = await mv.createTexture(c.toDataURL('image/png'));
+          mat.pbrMetallicRoughness.baseColorTexture.setTexture(tex);
+        } catch (err) { console.warn('logo ' + name + ' not applied', err); }
+      }
+    }
     function ledInit() {
       const mats = (mv.model && mv.model.materials) || [];
       ledMat = mats.find(m => m.name === 'Cam_LED_Red') || null;
@@ -823,7 +850,7 @@
     mv.addEventListener('load', () => {
       const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
       cx = c.x; cz = c.z; floorY = c.y - d.y / 2;
-      ledInit();
+      ledInit(); loadLogos();
       if (mv.availableAnimations && mv.availableAnimations.length > 0) $('anim').style.display = 'block';
       $('loading').style.display = 'none';
       if (needsPerm) { $('start').style.display = 'flex'; }
