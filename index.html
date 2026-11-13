@@ -793,6 +793,21 @@
 
     baseLayout();
 
+    // ---------- coming back to the page (tab switch / app switch / screen unlock) ----------
+    // The browser can resize the page and the viewer can drop its camera settings while the tab is hidden.
+    // On return we re-apply the exact stage view (size, field of view, position, direction) so nothing stays zoomed or skewed.
+    function resync() {
+      if (!ready || mode !== 'look') return;
+      baseLayout();                                   // correct size + roll scale for the current screen
+      rollDeg = rollGoal;                             // snap the roll to the phone's real roll (no leftover tilt)
+      layoutScene();
+      computeView(); applyView(); dirty = true;       // re-sets field of view, camera position and direction
+    }
+    function onBack() { resync(); setTimeout(resync, 150); setTimeout(resync, 600); }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) onBack(); });
+    window.addEventListener('pageshow', onBack);
+    window.addEventListener('focus', onBack);
+
     // ---------- start-up ----------
     mv.addEventListener('progress', e => {
       const p = Math.round((e.detail.totalProgress || 0) * 100);
