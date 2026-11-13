@@ -333,12 +333,17 @@
       const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneK) * 180 / Math.PI;
       mv.fieldOfView = Math.min(f, 149).toFixed(2) + 'deg';
     }
-    function baseLayout() {                                      // only runs when the screen size changes
-      const W = innerWidth || 1, H = innerHeight || 1, D = Math.ceil(Math.hypot(W, H)) + 2;
-      sceneK = D / H;
-      dprCap = Math.min(realDpr, 1.5, 1400 / D);
-      sceneEl.style.width = D + 'px'; sceneEl.style.height = D + 'px';
-      sceneEl.style.left = ((W - D) / 2) + 'px'; sceneEl.style.top = ((H - D) / 2) + 'px';
+    function baseLayout() {                                      // runs on screen-size change and when switching views
+      const W = innerWidth || 1, H = innerHeight || 1;
+      let w = W, h = H, l = 0, t = 0;
+      if (mode === 'orbit') { sceneK = 1; dprCap = Math.min(realDpr, 2); }     // 3D view: exactly the screen, nothing cropped
+      else {
+        const D = Math.ceil(Math.hypot(W, H)) + 2;
+        sceneK = D / H; dprCap = Math.min(realDpr, 1.5, 1400 / D);
+        w = h = D; l = (W - D) / 2; t = (H - D) / 2;
+      }
+      sceneEl.style.width = w + 'px'; sceneEl.style.height = h + 'px';
+      sceneEl.style.left = l + 'px'; sceneEl.style.top = t + 'px';
       layoutScene(); setMvFov();
     }
     function layoutScene() {                                     // only a rotation, nothing else
@@ -696,23 +701,57 @@
       $('sub').textContent = 'Stage view';
       b3d.classList.remove('on'); bMotion.classList.remove('dim'); bJoy.classList.remove('dim');
     }
+    // 3D view: whole stage framed on screen, smooth orbit / zoom / pan, limits so you never lose the model or go under the floor
+    let orbitR = 0;
+    function resetOrbit(instant) {
+      mv.cameraTarget = 'auto auto auto';
+      mv.fieldOfView = '30deg';
+      mv.minCameraOrbit = 'auto 0deg 1m'; mv.maxCameraOrbit = 'auto 90deg 500m';
+      mv.cameraOrbit = '45deg 65deg auto';
+      mv.jumpCameraToGoal();                              // let the viewer compute the fitted distance
+      const r = mv.getCameraOrbit().radius * 1.1;         // a little breathing room around the stage
+      orbitR = r;
+      mv.minCameraOrbit = `auto 5deg ${r * 0.25}m`;
+      mv.maxCameraOrbit = `auto 90deg ${r * 2}m`;
+      if (instant) { mv.cameraOrbit = `45deg 65deg ${r}m`; mv.jumpCameraToGoal(); }
+      else {                                              // glide back from where the user was
+        const cur = mv.getCameraOrbit();
+        mv.cameraOrbit = `${cur.theta}rad ${cur.phi}rad ${cur.radius}m`; mv.jumpCameraToGoal();
+        mv.cameraOrbit = `45deg 65deg ${r}m`;
+      }
+    }
     function toOrbit() {
       if (camOn) stopCam();
       mode = 'orbit';
       stopSensors();
+      rollDeg = rollGoal = 0;
+      baseLayout();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
-      mv.cameraTarget = 'auto auto auto';
-      mv.cameraOrbit = '45deg 65deg auto';
-      mv.fieldOfView = 'auto';
-      mv.jumpCameraToGoal();
-      $('sub').textContent = '3D view · drag to rotate';
+      mv.setAttribute('interpolation-decay', '70');
+      mv.setAttribute('touch-action', 'none');
+      mv.setAttribute('orbit-sensitivity', '1');
+      mv.setAttribute('zoom-sensitivity', '1');
+      resetOrbit(true);
+      $('sub').textContent = '3D view · double-tap to reset';
       b3d.classList.add('on'); bMotion.classList.add('dim'); bJoy.classList.add('dim');
     }
+    // double-tap anywhere on the model in 3D view -> back to the framed view
+    (function () {
+      let lt = 0, lx = 0, ly = 0;
+      document.addEventListener('pointerup', e => {
+        if (mode !== 'orbit' || (e.target.closest && e.target.closest('#top,#dock,#mcard,#jpanel'))) return;
+        const now = performance.now();
+        if (now - lt < 320 && Math.hypot(e.clientX - lx, e.clientY - ly) < 40) { resetOrbit(false); lt = 0; }
+        else { lt = now; lx = e.clientX; ly = e.clientY; }
+      }, true);
+    })();
     async function toStage() {
       await startSensors();
       offset = null; gotSensor = false;       // next sensor reading sets the start direction
       mode = 'look';
+      mv.minCameraOrbit = 'auto 0deg 0.1m'; mv.maxCameraOrbit = 'auto 180deg 200m';
+      baseLayout();
       mv.removeAttribute('camera-controls');
       setMvFov();
       sensHH = 0; sensP = 0; goToSpot(); ready = true;
