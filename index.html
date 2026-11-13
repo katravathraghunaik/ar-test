@@ -122,7 +122,9 @@
     max-camera-orbit="auto auto 200m"
     shadow-intensity="0"
     interaction-prompt="none"
-    field-of-view="65deg"
+    field-of-view="80deg"
+    min-field-of-view="30deg"
+    max-field-of-view="110deg"
     alt="Mocap stage truss">
     <div slot="progress-bar"></div>
   </model-viewer>
@@ -215,6 +217,8 @@
     const STEP_THRESH = 0.7;  // lower = more sensitive step detection
     const WALK_RATE = 3;      // how quickly a step is applied, metres per second
     const R = 1;              // keep as is
+    const FOV_START = 80;     // starting field of view in degrees (higher = wider, 65 was the old value)
+    const FOV_MIN = 30, FOV_MAX = 110;   // pinch limits
     // ====================
 
     // Testing only: change the start from the link, e.g.  ?x=-8&z=9&yaw=270
@@ -233,6 +237,7 @@
     let cx = 0, cz = 0, floorY = 0;
     const eyeY = () => floorY + EYE;
 
+    let fov = FOV_START;                     // current field of view (pinch changes it)
     let mode = 'look';                       // 'look' or 'orbit'
     let px = 0, pz = 0;
     let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
@@ -524,12 +529,37 @@
     }
     requestAnimationFrame(tick);
 
+
+    // ---------- pinch to zoom (stage view): pinch in = wider, pinch out = zoom in ----------
+    (function () {
+      let d0 = 0, f0 = fov;
+      const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      const onUI = t => !!(t.target && t.target.closest && t.target.closest('#jpanel,#dock,#top,#mcard'));
+      window.addEventListener('touchstart', e => {
+        if (e.touches.length === 2 && !onUI(e.touches[0]) && !onUI(e.touches[1])) { d0 = dist(e.touches); f0 = fov; }
+        else d0 = 0;
+      }, { passive: true });
+      window.addEventListener('touchmove', e => {
+        if (mode !== 'look' || !d0 || e.touches.length !== 2) return;
+        fov = clamp(f0 * d0 / dist(e.touches), FOV_MIN, FOV_MAX);
+        mv.fieldOfView = fov.toFixed(1) + 'deg';
+        if (typeof mv.jumpCameraToGoal === 'function') mv.jumpCameraToGoal();
+        dirty = true;
+      }, { passive: true });
+      window.addEventListener('touchend', e => { if (e.touches.length < 2) d0 = 0; }, { passive: true });
+      window.addEventListener('wheel', e => {          // desktop testing: scroll to zoom
+        if (mode !== 'look') return;
+        fov = clamp(fov * (e.deltaY > 0 ? 1.06 : 0.94), FOV_MIN, FOV_MAX);
+        mv.fieldOfView = fov.toFixed(1) + 'deg'; mv.jumpCameraToGoal(); dirty = true;
+      }, { passive: true });
+    })();
+
     // ---------- modes ----------
     function enterStage() {
       // The direction the visitor faces right now becomes the fixed start direction.
       mode = 'look';
       mv.removeAttribute('camera-controls');
-      mv.fieldOfView = '65deg';
+      mv.fieldOfView = fov + 'deg';
       offset = gotSensor ? lastHeading : null; sensHH = 0; if (!gotSensor) sensP = 0;
       goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
@@ -553,7 +583,7 @@
       offset = null; gotSensor = false;       // next sensor reading sets the start direction
       mode = 'look';
       mv.removeAttribute('camera-controls');
-      mv.fieldOfView = '65deg';
+      mv.fieldOfView = fov + 'deg';
       sensHH = 0; sensP = 0; goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
       $('sub').textContent = 'Stage view';
