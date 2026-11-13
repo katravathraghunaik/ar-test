@@ -120,8 +120,8 @@
   <model-viewer id="mv"
     src="Mocap_Truss_stage.glb?v=6"
     autoplay
-    min-camera-orbit="auto auto 0.1m"
-    max-camera-orbit="auto auto 200m"
+    min-camera-orbit="auto 0deg 0.1m"
+    max-camera-orbit="auto 180deg 200m"
     shadow-intensity="0"
     interaction-prompt="none"
     field-of-view="65deg"
@@ -251,6 +251,7 @@
     let sensHH = 0, sensP = 0, offset = null, lastHeading = 0, gotSensor = false;
     let yawOff = 0, pitchOff = 0, dirty = true, listening = false, ready = false;
     let motionOn = false, dimsOn = false, animOn = true;
+    let rawP = 0;
     let pending = 0, lastStep = 0, base = 9.8, prevHp = 0, freezeUntil = 0;
 
     const needsPerm = typeof DeviceOrientationEvent !== 'undefined' &&
@@ -271,7 +272,7 @@
     function curYaw() { return ((view.hh * 180 / Math.PI) % 360 + 360) % 360; }
     function computeView() {
       const hh = sensHH + yawOff + baseYaw;
-      const p = clamp(sensP + pitchOff, -1.3, 1.3);
+      const p = clamp(sensP + pitchOff, -1.5, 1.5);
       view.hh = hh;
       view.dx = Math.cos(p) * Math.sin(hh);
       view.dy = Math.sin(p);
@@ -310,12 +311,14 @@
         if (flat) return;
         offset = h; sensHH = 0; sensP = p; dirty = true; return;
       }
-      if (performance.now() < freezeUntil) return;        // finger on the screen: hold steady
-      const dh = flat ? 0 : wrap(wrap(h - offset) - sensHH), dp = p - sensP;
+      rawP = p;
+      const held = performance.now() < freezeUntil;       // finger on the screen: hold the TURN steady (up/down never held)
+      const dh = (flat || held) ? 0 : wrap(wrap(h - offset) - sensHH), dp = p - sensP;
       const mag = Math.hypot(dh, dp) * 180 / Math.PI;
       if (mag < DEADZONE) return;                         // ignore tiny shake
       const a = clamp(SMOOTH + mag * 0.12, SMOOTH, 1);    // small moves are smoothed, big turns follow quickly
-      sensHH = wrap(sensHH + dh * a); sensP += dp * a; dirty = true;
+      const ap = clamp(SMOOTH + Math.abs(dp) * 180 / Math.PI * 0.2, SMOOTH, 1);   // up/down catches up faster: the floor must stay level
+      sensHH = wrap(sensHH + dh * a); sensP += dp * ap; dirty = true;
     }
     function onStep(e) {
       if (mode !== 'look' || !ready || !motionOn) return;
@@ -490,15 +493,15 @@
       px = cx + SPOT.x; pz = cz + SPOT.z;                // position -> centre
       pending = 0; yawOff = 0; freezeUntil = 0;
       if (!camOn) { fov = FOV_START; mv.fieldOfView = fov + 'deg'; }
-      pitchOff = 0;                                      // up/down is NOT reset: it always follows the real tilt of the phone
+      pitchOff = 0;                                      // up/down is NOT reset: the floor always follows the real phone tilt
       if (gotSensor && offset !== null) {                // turning (left/right): the way the phone points now = start direction
-        offset = lastHeading; sensHH = 0;
+        offset = lastHeading; sensHH = 0; sensP = rawP;  // sensP = the phone's real tilt right now (no lag)
       } else { sensHH = 0; sensP = 0; }
       computeView(); applyView(); updateVals(); dirty = true;
     }
     $('pivotBtn').addEventListener('click', e => {
       e.stopPropagation();
-      resetToOrigin().then(() => toast('Back at the centre · facing the start direction'));
+      resetToOrigin().then(() => toast('Back at the centre · start direction'));
     });
 
     // ---------- camera lights: slow red <-> blue blink ----------
