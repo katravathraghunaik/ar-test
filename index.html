@@ -362,6 +362,7 @@
       return { X: x, Y: z, Z: -y };
     }
     function onOrient(e) {
+      if (mode !== 'look') return;                        // 3D View is just a viewer: phone tilt / gyro is ignored
       if (e.alpha === null || e.alpha === undefined) return;
       updateRoll(e.beta, e.gamma);
       const v = dirFromEuler(e.alpha, e.beta, e.gamma);
@@ -396,7 +397,9 @@
       }
       prevHp = hp;
     }
+    let sensGen = 0;                                      // lets a pending start be cancelled when 3D View opens
     async function startSensors() {
+      const gen = ++sensGen;
       try {
         if (needsPerm) {
           await DeviceOrientationEvent.requestPermission();
@@ -406,6 +409,7 @@
           }
         }
       } catch (err) {}
+      if (gen !== sensGen) return;
       if (!listening) {
         window.addEventListener(evName, onOrient, true);
         window.addEventListener('devicemotion', onStep, true);
@@ -413,6 +417,7 @@
       }
     }
     function stopSensors() {
+      sensGen++;
       window.removeEventListener(evName, onOrient, true);
       window.removeEventListener('devicemotion', onStep, true);
       listening = false;
@@ -794,7 +799,7 @@
       if (camOn) stopCam();
       mode = 'orbit';
       stopSensors();
-      rollDeg = rollGoal = 0;
+      rollDeg = rollGoal = 0; pending = 0; motionOn = false; bMotion.classList.remove('on');
       baseLayout();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
