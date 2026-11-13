@@ -122,9 +122,9 @@
     max-camera-orbit="auto auto 200m"
     shadow-intensity="0"
     interaction-prompt="none"
-    field-of-view="80deg"
+    field-of-view="65deg"
     min-field-of-view="30deg"
-    max-field-of-view="110deg"
+    max-field-of-view="120deg"
     alt="Mocap stage truss">
     <div slot="progress-bar"></div>
   </model-viewer>
@@ -138,7 +138,7 @@
     </a>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
-      <button id="pivotBtn" class="tbtn" aria-label="Set current position as pivot">
+      <button id="pivotBtn" class="tbtn" aria-label="Go to origin">
         <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4.2M12 17.3v4.2M2.5 12h4.2M17.3 12h4.2"/></svg>
       </button>
     </div>
@@ -196,8 +196,8 @@
 
     // ===== START POINT =====
     // x, z = metres from the CENTRE of the stage (the green square on the floor).
-    // 0, 0 = standing in the middle of the grid. The Pivot button saves your current position as the pivot
-    // (unless you saved your own pivot with the Pivot button, in which case the page starts there).
+    // 0, 0 = standing in the middle of the grid. The origin button (top right) takes you back to this same point
+    // (the button never changes it).
     // yaw = direction faced at the start: 0 = toward -z, 90 = toward +x, 180 = toward +z, 270 = toward -x.
     const SPOT = { x: 0, z: 0, yaw: 0 };
     // ========================
@@ -217,7 +217,7 @@
     const STEP_THRESH = 0.7;  // lower = more sensitive step detection
     const WALK_RATE = 3;      // how quickly a step is applied, metres per second
     const R = 1;              // keep as is
-    const FOV_START = 80;     // starting field of view in degrees (higher = wider, 65 was the old value)
+    const FOV_START = 65;     // starting field of view in degrees (higher = wider)
     const FOV_MIN = 30, FOV_MAX = 110;   // pinch limits
     // ====================
 
@@ -278,10 +278,9 @@
       mv.cameraOrbit = `${view.theta}deg ${view.phi}deg ${R}m`;
       mv.jumpCameraToGoal();
     }
-    function goToSpot() {                    // start point = saved pivot if there is one, otherwise the centre
-      const p = pivot || SPOT;
-      px = cx + p.x; pz = cz + p.z; pending = 0; pitchOff = 0; dirty = true;
-      yawOff = pivot ? wrap(pivot.yaw * Math.PI / 180 - sensHH - baseYaw) : 0;
+    function goToSpot() {                    // start point = the origin (stage centre)
+      px = cx + SPOT.x; pz = cz + SPOT.z; pending = 0; pitchOff = 0; dirty = true;
+      yawOff = 0;
     }
 
     // ---------- sensors ----------
@@ -468,21 +467,19 @@
       });
     }
 
-    // ---------- pivot (remembered on this phone) ----------
-    let pivot = null;
-    try { pivot = JSON.parse(localStorage.getItem('stagePivot') || 'null'); } catch (e) {}
+    // ---------- origin ----------
+    // The origin is always the stage centre (SPOT). The button only takes you back there; it never changes it.
+    try { localStorage.removeItem('stagePivot'); } catch (e) {}      // forget any pivot saved by the earlier version
     const valText = (x, z, yaw) => 'x ' + x.toFixed(2) + ' · z ' + z.toFixed(2) + ' · ' + Math.round(yaw) + '°';
     function updateVals() {
       const t = valText(px - cx, pz - cz, curYaw());
       if (SHOW_VALUES) $('jvals').innerHTML = t.replace(/ · /g, '<br>');
     }
-    // Pivot button: sets your current position and direction as the pivot (the page starts there next time).
-    $('pivotBtn').addEventListener('click', e => {
+    $('pivotBtn').addEventListener('click', async e => {
       e.stopPropagation();
-      if (mode !== 'look') { toast('Switch to stage view to set the pivot'); return; }
-      pivot = { x: px - cx, z: pz - cz, yaw: curYaw() };
-      try { localStorage.setItem('stagePivot', JSON.stringify(pivot)); } catch (err) {}
-      toast('Pivot set at your current position');
+      if (mode === 'orbit') await toStage();                          // 3D view -> stage view, at the origin
+      else { px = cx + SPOT.x; pz = cz + SPOT.z; pending = 0; dirty = true; }
+      toast('Back at the origin');
     });
 
     // ---------- camera lights: slow red <-> blue blink ----------
@@ -532,38 +529,69 @@
 
     // ---------- pinch to zoom (stage view): pinch in = wider, pinch out = zoom in ----------
     (function () {
-      const pts = new Map();                 // active fingers on the stage (not on buttons / joysticks)
-      let d0 = 0, f0 = fov, tt = 0;
-      const onUI = el => !!(el && el.closest && el.closest('#jpanel,#dock,#top,#mcard'));
-      const dist = () => { const p = [...pts.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); };
+      let d0 = 0, f0 = fov, tt = 0, lastFov = fov;
+      const ctlSym = () => Object.getOwnPropertySymbols(mv).find(k => k.description === 'controls');
       function setFov(v) {
-        fov = clamp(v, FOV_MIN, FOV_MAX);
+        const prev = lastFov; lastFov = fov = clamp(v, FOV_MIN, FOV_MAX);
+        const before = typeof mv.getFieldOfView === 'function' ? mv.getFieldOfView() : 0;
         mv.fieldOfView = fov.toFixed(1) + 'deg';
-        const jump = () => { if (typeof mv.jumpCameraToGoal === 'function') mv.jumpCameraToGoal(); dirty = true; };
-        jump();
-        if (mv.updateComplete) mv.updateComplete.then(jump);     // apply again once model-viewer has taken the new value
-        setTimeout(jump, 60);
+        const kick = () => { if (typeof mv.jumpCameraToGoal === 'function') mv.jumpCameraToGoal(); dirty = true; };
+        kick();
+        if (mv.updateComplete) mv.updateComplete.then(kick);
+        setTimeout(kick, 60);
+        setTimeout(() => {                    // if the viewer ignored the property, move its camera directly
+          try {
+            const now = mv.getFieldOfView();
+            if (before && Math.abs(now - before) < 0.05 && Math.abs(fov - prev) > 0.05) {
+              const c = mv[ctlSym()];
+              c.setFieldOfView(before * fov / prev); c.jumpToGoal(); kick();
+            }
+          } catch (e) {}
+        }, 140);
         toast('View ' + Math.round(fov) + '°' + (fov <= FOV_MIN + 0.5 ? ' (max zoom)' : fov >= FOV_MAX - 0.5 ? ' (widest)' : ''));
       }
-      window.addEventListener('pointerdown', e => {
+      const start = d => { d0 = d; f0 = fov; };
+      const move = d => {
+        if (mode !== 'look' || !d0) return;
+        const now = performance.now(); if (now - tt < 30) return; tt = now;
+        setFov(f0 * d0 / Math.max(d, 1));              // fingers apart -> smaller angle -> zoom in
+      };
+      const onUI = el => !!(el && el.closest && el.closest('#jpanel,#dock,#top,#mcard'));
+      const td = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+      // touch events
+      document.addEventListener('touchstart', e => {
+        if (e.touches.length === 2 && !onUI(e.touches[0].target) && !onUI(e.touches[1].target)) start(td(e.touches)); else if (e.touches.length !== 2) d0 = 0;
+      }, { capture: true, passive: true });
+      document.addEventListener('touchmove', e => {
+        if (e.touches.length === 2 && d0) { move(td(e.touches)); e.preventDefault(); }
+      }, { capture: true, passive: false });
+      document.addEventListener('touchend', e => { if (e.touches.length < 2) d0 = 0; }, { capture: true, passive: true });
+      document.addEventListener('touchcancel', () => { d0 = 0; }, { capture: true, passive: true });
+      // pointer events (same maths, in case touch events are not delivered)
+      const pts = new Map();
+      const pd = () => { const p = [...pts.values()]; return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); };
+      document.addEventListener('pointerdown', e => {
         if (onUI(e.target)) return;
         pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (pts.size === 2) { d0 = dist(); f0 = fov; }
+        if (pts.size === 2) start(pd());
       }, true);
-      window.addEventListener('pointermove', e => {
+      document.addEventListener('pointermove', e => {
         if (!pts.has(e.pointerId)) return;
         pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (mode !== 'look' || pts.size !== 2 || !d0) return;
-        const now = performance.now(); if (now - tt < 30) return; tt = now;
-        setFov(f0 * d0 / Math.max(dist(), 1));          // fingers apart -> smaller angle -> zoom in
+        if (pts.size === 2) move(pd());
       }, true);
       const up = e => { pts.delete(e.pointerId); if (pts.size < 2) d0 = 0; };
-      window.addEventListener('pointerup', up, true);
-      window.addEventListener('pointercancel', up, true);
-      window.addEventListener('wheel', e => {            // desktop testing: scroll to zoom
-        if (mode !== 'look') return;
-        setFov(fov * (e.deltaY > 0 ? 1.06 : 0.94));
-      }, { passive: true });
+      document.addEventListener('pointerup', up, true);
+      document.addEventListener('pointercancel', up, true);
+      // iOS Safari pinch gesture
+      let g0 = fov;
+      document.addEventListener('gesturestart', e => { e.preventDefault(); g0 = fov; }, true);
+      document.addEventListener('gesturechange', e => {
+        e.preventDefault();
+        if (mode === 'look') setFov(g0 / Math.max(e.scale, 0.05));
+      }, true);
+      // desktop testing: scroll wheel
+      window.addEventListener('wheel', e => { if (mode === 'look') setFov(fov * (e.deltaY > 0 ? 1.06 : 0.94)); }, { passive: true });
     })();
 
     // ---------- modes ----------
