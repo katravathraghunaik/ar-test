@@ -703,22 +703,31 @@
     }
     // 3D view: whole stage framed on screen, smooth orbit / zoom / pan, limits so you never lose the model or go under the floor
     let orbitR = 0;
-    function resetOrbit(instant) {
-      mv.cameraTarget = 'auto auto auto';
-      mv.fieldOfView = '30deg';
-      mv.minCameraOrbit = 'auto 0deg 1m'; mv.maxCameraOrbit = 'auto 90deg 500m';
-      mv.cameraOrbit = '45deg 65deg auto';
-      mv.jumpCameraToGoal();                              // let the viewer compute the fitted distance
-      const r = mv.getCameraOrbit().radius * 1.1;         // a little breathing room around the stage
-      orbitR = r;
-      mv.minCameraOrbit = `auto 5deg ${r * 0.25}m`;
-      mv.maxCameraOrbit = `auto 90deg ${r * 2}m`;
-      if (instant) { mv.cameraOrbit = `45deg 65deg ${r}m`; mv.jumpCameraToGoal(); }
-      else {                                              // glide back from where the user was
-        const cur = mv.getCameraOrbit();
-        mv.cameraOrbit = `${cur.theta}rad ${cur.phi}rad ${cur.radius}m`; mv.jumpCameraToGoal();
-        mv.cameraOrbit = `45deg 65deg ${r}m`;
+    // distance at which the whole stage box exactly fills the screen from the given viewing angle
+    function fitRadius(theta, phi) {
+      const c = mv.getDimensions();
+      const aspect = (mv.clientWidth || innerWidth) / (mv.clientHeight || innerHeight);
+      const tv = Math.tan(30 * Math.PI / 360), th = tv * aspect;
+      const dir = [Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta)];   // target -> camera
+      let rt = [dir[2], 0, -dir[0]]; const rl = Math.hypot(rt[0], rt[2]) || 1; rt = rt.map(v => v / rl);
+      const up = [dir[1] * rt[2] - dir[2] * rt[1], dir[2] * rt[0] - dir[0] * rt[2], dir[0] * rt[1] - dir[1] * rt[0]];
+      const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+      let r = 0;
+      for (const sx of [-.5, .5]) for (const sy of [-.5, .5]) for (const sz of [-.5, .5]) {
+        const p = [sx * c.x, sy * c.y, sz * c.z], d = dot(p, dir);
+        r = Math.max(r, d + Math.abs(dot(p, rt)) / th, d + Math.abs(dot(p, up)) / tv);
       }
+      return r * 1.03;                                    // hairline margin so nothing touches the edge
+    }
+    function resetOrbit(instant) {
+      const c = mv.getBoundingBoxCenter(), t = 45 * Math.PI / 180, ph = 65 * Math.PI / 180;
+      const r = fitRadius(t, ph); orbitR = r;
+      mv.fieldOfView = '30deg';
+      mv.minCameraOrbit = `auto 5deg ${r * 0.2}m`;
+      mv.maxCameraOrbit = `auto 90deg ${r * 2}m`;
+      mv.cameraTarget = `${c.x}m ${c.y}m ${c.z}m`;
+      mv.cameraOrbit = `45deg 65deg ${r}m`;
+      if (instant) mv.jumpCameraToGoal();                 // otherwise it glides back smoothly
     }
     function toOrbit() {
       if (camOn) stopCam();
