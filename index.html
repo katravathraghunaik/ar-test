@@ -33,45 +33,51 @@
     #brand .t b { display:block; font-size:11.5px; letter-spacing:.2em; font-weight:700; }
     #brand .t span { font-size:11px; color:var(--muted); }
     #tr { display:flex; gap:8px; pointer-events:auto; }
-    #pivotBtn { display:flex; align-items:center; gap:4px; height:44px; padding:0 12px; border-radius:22px;
-      color:var(--red); border:1.5px solid rgba(225,29,46,.7); background:rgba(11,11,12,.82); }
+    .tbtn { display:flex; align-items:center; justify-content:center; height:44px; border-radius:22px;
+      color:var(--red); border:1.5px solid rgba(225,29,46,.7); background:rgba(11,11,12,.82); padding:0; }
+    #pivotBtn { width:44px; }
     #pivotBtn svg.i { width:22px; height:22px; }
-    #pivotBtn svg.c { width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:2.4;
+    #pivotBtn:active { background:var(--red); color:var(--ink); }
+    #arrowBtn { width:34px; margin-left:-2px; }
+    #arrowBtn svg.c { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:2.4;
       stroke-linecap:round; stroke-linejoin:round; transition:transform .2s; }
-    #pivotBtn.open { background:var(--red); color:var(--ink); border-color:var(--red); }
-    #pivotBtn.open svg.c { transform:rotate(180deg); }
+    #arrowBtn.open { background:var(--red); color:var(--ink); border-color:var(--red); }
+    #arrowBtn.open svg.c { transform:rotate(180deg); }
     #anim { display:none; height:44px; padding:0 14px; border-radius:22px; font-size:12px; font-weight:600;
-      color:var(--red); border:1.5px solid rgba(225,29,46,.7); background:rgba(11,11,12,.82); }
+      color:var(--red); border:1.5px solid rgba(225,29,46,.7); background:rgba(11,11,12,.82); margin-right:2px; }
 
     /* pivot dropdown */
-    #menu { position:absolute; top:calc(env(safe-area-inset-top,0px) + 66px); right:12px; width:262px;
+    #menu { position:absolute; top:calc(env(safe-area-inset-top,0px) + 66px); right:12px; width:268px;
       border-radius:20px; padding:6px; display:none; border-top:2px solid var(--red); }
-    #menu .hd { padding:10px 12px 8px; }
-    #menu .hd small { display:block; font-size:10px; letter-spacing:.18em; color:var(--red); font-weight:700; }
-    #menu .hd div { font-size:14px; margin-top:4px; color:#e6e6e8; font-variant-numeric:tabular-nums; }
     #menu .it { width:100%; display:flex; align-items:center; gap:12px; border:0; background:transparent;
-      color:inherit; text-align:left; padding:10px 10px; border-radius:14px; border-top:1px solid var(--line); }
+      color:inherit; text-align:left; padding:10px 10px; border-radius:14px; }
     #menu .it:active { background:var(--red-soft); }
-    #menu .ic { flex:none; width:36px; height:36px; border-radius:50%; background:var(--red); color:var(--ink);
+    #menu .ic { flex:none; width:38px; height:38px; border-radius:50%; background:var(--red); color:var(--ink);
       display:flex; align-items:center; justify-content:center; }
-    #menu .ic svg.i { width:19px; height:19px; stroke-width:2.1; }
+    #menu .ic svg.i { width:20px; height:20px; stroke-width:2.1; }
     #menu .it .tx b { display:block; font-size:14px; font-weight:600; color:#f1f1f2; }
-    #menu .it .tx small { display:block; font-size:11.5px; color:var(--muted); margin-top:2px; }
+    #menu .it .tx small { display:block; font-size:11.5px; color:var(--muted); margin-top:3px;
+      font-variant-numeric:tabular-nums; }
     #menu .ft { padding:9px 12px 7px; font-size:11px; color:var(--red); border-top:1px solid var(--line);
       font-variant-numeric:tabular-nums; }
 
     /* measurements */
     #mcard { position:absolute; top:calc(env(safe-area-inset-top,0px) + 70px); left:12px;
-      padding:12px 14px; border-radius:16px; font-size:13px; display:none; min-width:200px;
-      border-left:3px solid var(--red); }
-    #mcard h4 { margin:0 0 8px; font-size:10px; letter-spacing:.18em; color:var(--red); font-weight:700; }
-    #mcard .row { display:flex; align-items:center; gap:8px; margin:6px 0; }
-    #mcard i { width:10px; height:10px; border-radius:50%; display:inline-block; }
-    #mcard .row span { color:var(--muted); width:50px; }
-    #mcard .row b { font-weight:600; color:#f1f1f2; }
+      padding:11px 14px 8px; border-radius:16px; font-size:12px; display:none; width:204px;
+      border-left:3px solid var(--red); max-height:calc(100% - 210px); overflow:hidden; }
+    #mcard h4 { margin:0; font-size:10px; letter-spacing:.18em; color:var(--red); font-weight:700;
+      display:flex; justify-content:space-between; align-items:center; pointer-events:auto; }
+    #mcard h4::after { content:'▾'; font-size:12px; }
+    #mcard.shut h4::after { content:'▸'; }
+    #mcard.shut #mbody { display:none; }
+    #mcard .grp { margin:8px 0 2px; font-size:9.5px; letter-spacing:.14em; color:var(--muted); font-weight:700; }
+    #mcard .row { display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:2px 0;
+      border-bottom:1px solid rgba(255,255,255,.06); font-variant-numeric:tabular-nums; }
+    #mcard .row span { color:var(--muted); }
+    #mcard .row b { font-weight:700; color:#f4f4f5; }
+    #mcard .row b i { font-style:normal; font-weight:500; color:var(--muted); font-size:10.5px; margin-left:4px; }
     #dims { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; display:none; }
-    #dims text { font-size:13px; font-weight:700; paint-order:stroke; stroke:rgba(0,0,0,.7);
-      stroke-width:4px; stroke-linejoin:round; text-anchor:middle; }
+    #dims text { text-anchor:middle; font-family:inherit; }
 
     /* toast */
     #toast { position:absolute; left:50%; transform:translateX(-50%);
@@ -125,7 +131,7 @@
 </head>
 <body>
   <model-viewer id="mv"
-    src="Mocap_Truss_grid.glb"
+    src="Mocap_Truss_stage.glb"
     autoplay
     ar
     ar-modes="webxr scene-viewer quick-look"
@@ -149,32 +155,24 @@
     </div>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
-      <button id="pivotBtn" aria-label="Pivot options">
+      <button id="pivotBtn" class="tbtn" aria-label="Go to pivot">
         <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4.2M12 17.3v4.2M2.5 12h4.2M17.3 12h4.2"/></svg>
+      </button>
+      <button id="arrowBtn" class="tbtn" aria-label="Pivot options">
         <svg class="c" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </button>
     </div>
   </div>
 
   <div id="menu" class="glass">
-    <div class="hd"><small>CURRENT POSITION</small><div id="mvals">x 0.00 · z 0.00 · 0°</div></div>
-    <button class="it" id="m-go">
-      <span class="ic"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4.2M12 17.3v4.2M2.5 12h4.2M17.3 12h4.2"/></svg></span>
-      <span class="tx"><b>Go to pivot</b><small id="m-gosub">Return to the start point</small></span>
-    </button>
     <button class="it" id="m-lock">
       <span class="ic"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8 10.5V7.8a4 4 0 018 0v2.7"/></svg></span>
-      <span class="tx"><b>Lock current position</b><small>Save where you stand as the pivot</small></span>
+      <span class="tx"><b>Set current position as pivot</b><small id="m-now">x 0.00 · z 0.00 · 0°</small></span>
     </button>
     <div class="ft" id="m-ft">Pivot · start point</div>
   </div>
 
-  <div id="mcard" class="glass">
-    <h4>STAGE SIZE</h4>
-    <div class="row"><i style="background:#ff6b63"></i><span>Width</span><b id="mw"></b></div>
-    <div class="row"><i style="background:#4cd07d"></i><span>Depth</span><b id="md"></b></div>
-    <div class="row"><i style="background:#5aa9ff"></i><span>Height</span><b id="mh"></b></div>
-  </div>
+  <div id="mcard" class="glass"><h4 id="mhead">TRUSS DIMENSIONS</h4><div id="mbody"></div></div>
 
   <div id="toast" class="glass"></div>
 
@@ -189,17 +187,17 @@
       <svg class="i" viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="8" rx="1.5"/><path d="M6 8v3M10 8v4M14 8v3M18 8v4"/></svg>
       Measure
     </button>
-    <button id="b-motion">
-      <svg class="i" viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.8"/><path d="M9 21l2.2-6-2.7-2.5 1.2-4.2 3.5 1.2 2.6 2.8M11.2 15l3.8 1.5 1 4.5M7 9.5l3.7-2"/></svg>
-      Motion
+    <button id="b-3d">
+      <svg class="i" viewBox="0 0 24 24"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M12 12l8.5-4.7M12 12v9.5M12 12L3.5 7.3"/></svg>
+      3D View
     </button>
     <button id="b-joy">
       <svg class="i" viewBox="0 0 24 24"><path d="M6.5 8h11a4.5 4.5 0 014.4 5.5l-.7 3a2.6 2.6 0 01-4.4 1.2L15 15.5H9l-1.8 2.2a2.6 2.6 0 01-4.4-1.2l-.7-3A4.5 4.5 0 016.5 8z"/><path d="M8 10.5v3M6.5 12h3"/><circle cx="15.5" cy="11" r=".6" fill="currentColor"/><circle cx="17.5" cy="13" r=".6" fill="currentColor"/></svg>
       Joystick
     </button>
-    <button id="b-3d">
-      <svg class="i" viewBox="0 0 24 24"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M12 12l8.5-4.7M12 12v9.5M12 12L3.5 7.3"/></svg>
-      3D View
+    <button id="b-motion">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.8"/><path d="M9 21l2.2-6-2.7-2.5 1.2-4.2 3.5 1.2 2.6 2.8M11.2 15l3.8 1.5 1 4.5M7 9.5l3.7-2"/></svg>
+      Motion
     </button>
     <button id="b-ar">
       <svg class="i" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 015.5 4H8M16 4h2.5A1.5 1.5 0 0120 5.5V8M20 16v2.5a1.5 1.5 0 01-1.5 1.5H16M8 20H5.5A1.5 1.5 0 014 18.5V16"/><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z"/></svg>
@@ -230,8 +228,12 @@
     const SPOT = { x: -11.03, z: -4.89, yaw: 32 };
     // ================================
 
-    // ===== STAGE SIZE (metres, used by Measure) =====
-    const STAGE = { w: 24.383, d: 16.820, h: 11.536 };
+    // ===== TRUSS SIZE (metres, measured from the model; used by Measure) =====
+    const STAGE = { w: 24.383, d: 16.820, h: 11.536 };      // outer footprint and pole height
+    const POLE_X = [-9.678, 0.002, 9.681];                   // pole centres, left to right
+    const POLE_Z = [-7.014, 7.012];                          // pole centres, back and front
+    const LEVEL = { low: 4.895, top: 9.770, pole: 11.536 };  // truss levels above the floor
+    const CAMERAS = 64;
 
     // ===== SETTINGS =====
     const EYE = 1.6;          // eye height above the floor, metres
@@ -388,58 +390,99 @@
     makeJoy($('padMove'), $('knMove'), moveS);
     makeJoy($('padLook'), $('knLook'), lookS);
 
-    // ---------- measurement lines (stage size, not the floor grid) ----------
-    let corners = null, defs = [], els = [];
+    // ---------- measurements: dimension lines drawn on the truss ----------
+    const fx = POLE_X, fz = POLE_Z, OFF = 0.38;
+    const DIMS = [
+      { a:[fx[0],0.05,fz[1]], b:[fx[1],0.05,fz[1]] },   // front, left span
+      { a:[fx[1],0.05,fz[1]], b:[fx[2],0.05,fz[1]] },   // front, right span
+      { a:[fx[0],0.05,fz[0]], b:[fx[1],0.05,fz[0]] },   // back, left span
+      { a:[fx[1],0.05,fz[0]], b:[fx[2],0.05,fz[0]] },   // back, right span
+      { a:[fx[0],0.05,fz[0]], b:[fx[0],0.05,fz[1]] },   // left side depth
+      { a:[fx[2],0.05,fz[0]], b:[fx[2],0.05,fz[1]] },   // right side depth
+      { a:[fx[0]-OFF,0,fz[1]+OFF], b:[fx[0]-OFF,LEVEL.low,fz[1]+OFF] },          // pole: floor to lower truss
+      { a:[fx[0]-OFF,LEVEL.low,fz[1]+OFF], b:[fx[0]-OFF,LEVEL.top,fz[1]+OFF] },  // lower truss to top truss
+      { a:[fx[0]-OFF,LEVEL.top,fz[1]+OFF], b:[fx[0]-OFF,LEVEL.pole,fz[1]+OFF] }, // top truss to pole top
+      { a:[fx[2]+OFF,0,fz[1]+OFF], b:[fx[2]+OFF,LEVEL.pole,fz[1]+OFF] }          // full pole height
+    ];
+    DIMS.forEach(d => { d.len = Math.hypot(d.a[0]-d.b[0], d.a[1]-d.b[1], d.a[2]-d.b[2]); });
+    const fmtM = v => v.toFixed(2) + ' m', fmtF = v => (v * 3.28084).toFixed(1) + ' ft';
+    (function buildCard() {
+      const row = (l, v) => `<div class="row"><span>${l}</span><b>${fmtM(v)}</b></div>`;
+      $('mbody').innerHTML =
+        '<div class="grp">TRUSS TO TRUSS</div>' +
+        row('Left span', Math.abs(POLE_X[1] - POLE_X[0])) + row('Right span', Math.abs(POLE_X[2] - POLE_X[1])) +
+        row('Corner to corner', POLE_X[2] - POLE_X[0]) + row('Depth', POLE_Z[1] - POLE_Z[0]) +
+        '<div class="grp">HEIGHTS</div>' +
+        row('Lower truss', LEVEL.low) + row('Top truss', LEVEL.top) + row('Pole', LEVEL.pole) +
+        '<div class="grp">FOOTPRINT</div>' +
+        `<div class="row"><span>Outer</span><b>${STAGE.w.toFixed(2)} × ${STAGE.d.toFixed(2)} m</b></div>` +
+        `<div class="row"><span>Cameras</span><b>${CAMERAS}</b></div>`;
+      $('mhead').addEventListener('click', () => $('mcard').classList.toggle('shut'));
+    })();
+
+    let dimEls = [], dimsBuilt = false;
+    const abs3 = p => [cx + p[0], floorY + p[1], cz + p[2]];
     function buildDims() {
-      const c = mv.getBoundingBoxCenter();
-      const x0 = c.x - STAGE.w/2, x1 = c.x + STAGE.w/2;
-      const y0 = floorY, y1 = floorY + STAGE.h;
-      const z0 = c.z - STAGE.d/2, z1 = c.z + STAGE.d/2;
-      corners = { A:[x0,y0,z1], B:[x1,y0,z1], C:[x1,y0,z0], D:[x1,y1,z1] };
       mv.querySelectorAll('.hs').forEach(n => n.remove());
-      for (const k in corners) {
-        const b = document.createElement('button');
-        b.className = 'hs'; b.slot = 'hotspot-' + k;
-        b.setAttribute('data-position', corners[k].map(v => v + 'm').join(' '));
-        b.setAttribute('data-normal', '0 1 0');
-        b.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;';
-        mv.appendChild(b);
-      }
-      defs = [
-        { a:'A', b:'B', color:'#ff6b63', label:'Width ' + STAGE.w.toFixed(2) + ' m' },
-        { a:'B', b:'C', color:'#4cd07d', label:'Depth ' + STAGE.d.toFixed(2) + ' m' },
-        { a:'B', b:'D', color:'#5aa9ff', label:'Height ' + STAGE.h.toFixed(2) + ' m' }
-      ];
-      $('mw').textContent = m2(STAGE.w); $('md').textContent = m2(STAGE.d); $('mh').textContent = m2(STAGE.h);
-      svg.innerHTML = '';
-      els = defs.map(df => {
-        const l = document.createElementNS(NS, 'line');
-        l.setAttribute('stroke', df.color); l.setAttribute('stroke-width', '4');
-        l.setAttribute('stroke-linecap', 'round');
-        const t = document.createElementNS(NS, 'text');
-        t.setAttribute('fill', df.color); t.textContent = df.label;
-        svg.appendChild(l); svg.appendChild(t);
-        return { l, t };
+      svg.innerHTML = ''; dimEls = [];
+      DIMS.forEach((d, i) => {
+        ['a', 'b'].forEach(k => {
+          const b = document.createElement('button');
+          b.className = 'hs'; b.slot = 'hotspot-d' + i + k;
+          b.setAttribute('data-position', abs3(d[k]).map(v => v + 'm').join(' '));
+          b.setAttribute('data-normal', '0 1 0');
+          b.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;';
+          mv.appendChild(b);
+        });
+        const g = document.createElementNS(NS, 'g');
+        const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); g.appendChild(e); return e; };
+        const under = mk('line', { stroke:'rgba(0,0,0,.75)', 'stroke-width':'6', 'stroke-linecap':'round' });
+        const line  = mk('line', { stroke:'#e11d2e', 'stroke-width':'3', 'stroke-linecap':'round' });
+        const ah1 = mk('polygon', { fill:'#e11d2e', stroke:'rgba(0,0,0,.75)', 'stroke-width':'1.2' });
+        const ah2 = mk('polygon', { fill:'#e11d2e', stroke:'rgba(0,0,0,.75)', 'stroke-width':'1.2' });
+        const pill = mk('rect', { width:'78', height:'36', rx:'10', fill:'rgba(11,11,12,.9)', stroke:'#e11d2e', 'stroke-width':'1.6' });
+        const t1 = mk('text', { fill:'#ffffff', 'font-size':'13', 'font-weight':'700' }); t1.textContent = fmtM(d.len);
+        const t2 = mk('text', { fill:'#b9bbc0', 'font-size':'10.5', 'font-weight':'500' }); t2.textContent = fmtF(d.len);
+        svg.appendChild(g); dimEls.push({ g, under, line, ah1, ah2, pill, t1, t2 });
       });
+      dimsBuilt = true;
+    }
+    function setDims(on) {
+      dimsOn = on;
+      if (on && !dimsBuilt) buildDims();
+      if (!on) { mv.querySelectorAll('.hs').forEach(n => n.remove()); svg.innerHTML = ''; dimEls = []; dimsBuilt = false; }
+    }
+    function arrow(x, y, ux, uy) {            // arrow head at (x,y) pointing along (ux,uy)
+      const s = 11, w = 5, bx = x - ux * s, by = y - uy * s;
+      return `${x},${y} ${bx - uy * w},${by + ux * w} ${bx + uy * w},${by - ux * w}`;
     }
     function inFront(p) {
       if (mode !== 'look') return true;
       return (p[0]-px)*view.dx + (p[1]-eyeY())*view.dy + (p[2]-pz)*view.dz > 0.2;
     }
     function drawDims() {
-      if (!dimsOn || !corners) { svg.style.display = 'none'; return; }
+      if (!dimsOn || !dimsBuilt) { svg.style.display = 'none'; return; }
       svg.style.display = 'block';
-      defs.forEach((df, i) => {
-        const ha = mv.queryHotspot('hotspot-' + df.a), hb = mv.queryHotspot('hotspot-' + df.b);
-        const { l, t } = els[i];
-        if (!ha || !hb || !inFront(corners[df.a]) || !inFront(corners[df.b])) {
-          l.style.display = 'none'; t.style.display = 'none'; return;
+      DIMS.forEach((d, i) => {
+        const e = dimEls[i];
+        const ha = mv.queryHotspot('hotspot-d' + i + 'a'), hb = mv.queryHotspot('hotspot-d' + i + 'b');
+        const A = abs3(d.a), B = abs3(d.b);
+        let show = !!(ha && hb && inFront(A) && inFront(B));
+        let a, b, L = 0;
+        if (show) { a = ha.canvasPosition; b = hb.canvasPosition; L = Math.hypot(b.x - a.x, b.y - a.y); show = L > 44; }
+        if (!show) { e.g.style.display = 'none'; return; }
+        e.g.style.display = '';
+        const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
+        for (const el of [e.under, e.line]) {
+          el.setAttribute('x1', a.x + ux * 6); el.setAttribute('y1', a.y + uy * 6);
+          el.setAttribute('x2', b.x - ux * 6); el.setAttribute('y2', b.y - uy * 6);
         }
-        const a = ha.canvasPosition, b = hb.canvasPosition;
-        l.style.display = ''; t.style.display = '';
-        l.setAttribute('x1', a.x); l.setAttribute('y1', a.y);
-        l.setAttribute('x2', b.x); l.setAttribute('y2', b.y);
-        t.setAttribute('x', (a.x + b.x) / 2); t.setAttribute('y', (a.y + b.y) / 2 - 6);
+        e.ah1.setAttribute('points', arrow(a.x, a.y, -ux, -uy));
+        e.ah2.setAttribute('points', arrow(b.x, b.y, ux, uy));
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        e.pill.setAttribute('x', mx - 39); e.pill.setAttribute('y', my - 18);
+        e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my - 2);
+        e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my + 12);
       });
     }
 
@@ -449,13 +492,12 @@
     const valText = (x, z, yaw) => 'x ' + x.toFixed(2) + ' · z ' + z.toFixed(2) + ' · ' + Math.round(yaw) + '°';
     function refreshPivotText() {
       $('m-ft').textContent = pivot ? 'Pivot · ' + valText(pivot.x, pivot.z, pivot.yaw) : 'Pivot · start point';
-      $('m-gosub').textContent = pivot ? 'Return to your locked position' : 'Return to the start point';
     }
     refreshPivotText();
     function updateVals() {
       const t = valText(px - cx, pz - cz, curYaw());
       if (SHOW_VALUES) $('jvals').innerHTML = t.replace(/ · /g, '<br>');
-      if (menuOpen) $('mvals').textContent = t;
+      if (menuOpen) $('m-now').textContent = 'Now: ' + t;
     }
     function goToPivot() {
       mode = 'look'; mv.removeAttribute('camera-controls'); mv.fieldOfView = '65deg';
@@ -468,24 +510,24 @@
     function setMenu(open) {
       menuOpen = open;
       $('menu').style.display = open ? 'block' : 'none';
-      $('pivotBtn').classList.toggle('open', open);
+      $('arrowBtn').classList.toggle('open', open);
       if (open) updateVals();
     }
-    $('pivotBtn').addEventListener('click', e => { e.stopPropagation(); setMenu(!menuOpen); });
-    $('menu').addEventListener('click', e => e.stopPropagation());
-    window.addEventListener('click', () => { if (menuOpen) setMenu(false); });
-
-    $('m-go').addEventListener('click', async () => {
-      setMenu(false);
+    // Pivot button: go back to the pivot.  Small arrow: options (set the current position as pivot).
+    $('pivotBtn').addEventListener('click', async e => {
+      e.stopPropagation(); setMenu(false);
       if (mode === 'orbit') await toStage();
       if (pivot) { goToPivot(); toast('Back at your locked pivot'); }
       else { enterStage(); toast('Back at the start point'); }
     });
+    $('arrowBtn').addEventListener('click', e => { e.stopPropagation(); setMenu(!menuOpen); });
+    $('menu').addEventListener('click', e => e.stopPropagation());
+    window.addEventListener('click', () => { if (menuOpen) setMenu(false); });
     $('m-lock').addEventListener('click', () => {
       if (mode !== 'look') { toast('Switch to stage view to lock a position'); setMenu(false); return; }
       pivot = { x: px - cx, z: pz - cz, yaw: curYaw() };
       try { localStorage.setItem('stagePivot', JSON.stringify(pivot)); } catch (e) {}
-      refreshPivotText(); setMenu(false); toast('Pivot locked at your current position');
+      refreshPivotText(); setMenu(false); toast('Pivot set at your current position');
     });
 
     // ---------- main loop ----------
@@ -564,7 +606,7 @@
       toast(motionOn ? 'Motion on · walk to move through the stage' : 'Motion off · look around from one point');
     });
     bMeas.addEventListener('click', () => {
-      dimsOn = !dimsOn; bMeas.classList.toggle('on', dimsOn);
+      setDims(!dimsOn); bMeas.classList.toggle('on', dimsOn);
       $('mcard').style.display = dimsOn ? 'block' : 'none';
     });
     bAr.addEventListener('click', () => {
@@ -585,7 +627,6 @@
     mv.addEventListener('load', () => {
       const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
       cx = c.x; cz = c.z; floorY = c.y - d.y / 2;
-      buildDims();
       if (mv.availableAnimations && mv.availableAnimations.length > 0) $('anim').style.display = 'block';
       $('loading').style.display = 'none';
       if (needsPerm) { $('start').style.display = 'flex'; }
