@@ -205,7 +205,7 @@
     // 0, 0 = standing in the middle of the grid. The origin button (top right) takes you back to this same point
     // (the button never changes it).
     // yaw = direction faced at the start: 0 = toward -z, 90 = toward +x, 180 = toward +z, 270 = toward -x.
-    const SPOT = { x: 0, z: 0, yaw: 0 };    // origin faces straight down the stage (-z), same as index1; 90 = toward +x, 180 = toward +z, 270 = toward -x
+    const SPOT = { x: 0, z: 0, yaw: 90 };   // centre of the stage, facing along the WIDTH (+x). 270 = the opposite end; 0 / 180 = along the depth
     // ========================
 
     // ===== TRUSS SIZE (metres, measured from the model; used by Measure) =====
