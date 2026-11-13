@@ -19,6 +19,7 @@
     #cam { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; background:#000; }
     html.cam #cam { display:block; }
     html.cam body { background:#000; }
+    #scene { position:absolute; left:0; top:0; width:100%; height:100%; transform-origin:50% 50%; }
     model-viewer { position:absolute; inset:0; width:100%; height:100%;
       background:transparent; --poster-color:transparent; }
     svg.i { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.8;
@@ -117,6 +118,7 @@
 </head>
 <body>
   <video id="cam" playsinline muted autoplay></video>
+  <div id="scene">
   <model-viewer id="mv"
     src="Mocap_Truss_stage.glb?v=6"
     autoplay
@@ -125,13 +127,14 @@
     shadow-intensity="0"
     interaction-prompt="none"
     field-of-view="65deg"
-    min-field-of-view="30deg"
-    max-field-of-view="120deg"
+    min-field-of-view="5deg"
+    max-field-of-view="150deg"
     alt="Mocap stage truss">
     <div slot="progress-bar"></div>
   </model-viewer>
 
   <svg id="dims"></svg>
+  </div>
 
   <div id="top">
     <a id="brand" class="glass" href="https://www.annapurnastudios.com/a-m-mocaplab.html" target="_blank" rel="noopener" aria-label="A&M Mocap Lab website">
@@ -291,6 +294,49 @@
       yawOff = 0;
     }
 
+    // ---------- roll: turning the phone around the viewing axis (portrait <-> landscape) ----------
+    // The viewer camera always keeps the floor level, so when the phone rolls we turn the whole picture the opposite
+    // way by the phone's real roll. The virtual floor then stays level with the real floor, like the camera view.
+    const sceneEl = $('scene');
+    let rollDeg = 0, rollGoal = 0, layA = -99, sceneEH = 0;
+    const screenAngle = () => {
+      const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle
+              : (typeof window.orientation === 'number' ? window.orientation : 0);
+      return ((Math.round(a / 90) * 90) % 360 + 360) % 360;
+    };
+    function updateRoll(beta, gamma) {
+      const d = Math.PI / 180, b = beta * d, g = gamma * d;
+      const X = -Math.cos(b) * Math.sin(g), Y = Math.sin(b);   // how far the phone's right edge / top edge point up
+      let r, u;
+      switch (screenAngle()) {                                   // if the page itself auto-rotated, use the screen's own axes
+        case 90:  r = -Y; u = X;  break;
+        case 180: r = -X; u = -Y; break;
+        case 270: r = Y;  u = -X; break;
+        default:  r = X;  u = Y;
+      }
+      const len = Math.hypot(r, u);                              // small when looking straight up/down: roll is meaningless there
+      const t = clamp((len - 0.08) / 0.32, 0, 1), w = t * t * (3 - 2 * t);
+      rollGoal = len > 0.02 ? Math.atan2(r, u) / d * w : 0;
+    }
+    function setMvFov() {
+      if (mode === 'orbit' || !customElements.get('model-viewer')) return;
+      const H = innerHeight || 1, eh = sceneEH || H;
+      const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * eh / H) * 180 / Math.PI;   // keeps the on-screen zoom exactly as set
+      mv.fieldOfView = f.toFixed(2) + 'deg';
+    }
+    function layoutScene() {                                     // container big enough to still cover the screen once rotated
+      const W = innerWidth, H = innerHeight;
+      layA = Math.abs(rollDeg);
+      const t = Math.min(layA + 1.5, 180) * Math.PI / 180, c = Math.abs(Math.cos(t)), s = Math.abs(Math.sin(t));
+      const ew = Math.ceil((W * c + H * s) * 1.01), eh = Math.ceil((W * s + H * c) * 1.01);
+      sceneEH = eh;
+      sceneEl.style.width = ew + 'px'; sceneEl.style.height = eh + 'px';
+      sceneEl.style.left = ((W - ew) / 2) + 'px'; sceneEl.style.top = ((H - eh) / 2) + 'px';
+      setMvFov(); dirty = true;
+    }
+    window.addEventListener('resize', layoutScene);
+    window.addEventListener('orientationchange', () => setTimeout(layoutScene, 250));
+
     // ---------- sensors ----------
     function dirFromEuler(a, b, gm) {
       const d = Math.PI / 180; a *= d; b *= d; gm *= d;
@@ -301,6 +347,7 @@
     }
     function onOrient(e) {
       if (e.alpha === null || e.alpha === undefined) return;
+      updateRoll(e.beta, e.gamma);
       const v = dirFromEuler(e.alpha, e.beta, e.gamma);
       const p = Math.asin(clamp(v.Y, -1, 1));
       const flat = Math.abs(v.Y) > 0.97;                 // looking straight up/down: heading is unreliable
@@ -492,7 +539,7 @@
       moveS.x = moveS.y = lookS.x = lookS.y = 0;
       px = cx + SPOT.x; pz = cz + SPOT.z;                // position -> centre
       pending = 0; yawOff = 0; freezeUntil = 0;
-      if (!camOn) { fov = FOV_START; mv.fieldOfView = fov + 'deg'; }
+      if (!camOn) { fov = FOV_START; setMvFov(); }
       pitchOff = 0;                                      // up/down is NOT reset: the floor always follows the real phone tilt
       if (gotSensor && offset !== null) {                // turning (left/right): the way the phone points now = start direction
         offset = lastHeading; sensHH = 0; sensP = rawP;  // sensP = the phone's real tilt right now (no lag)
@@ -542,6 +589,13 @@
         }
         if (dirty && ready) { computeView(); applyView(); dirty = false; updateVals(); }
       }
+      const goal = mode === 'look' ? rollGoal : 0;
+      let dr = goal - rollDeg; dr = ((dr + 540) % 360) - 180;
+      if (Math.abs(dr) > 0.02) {
+        rollDeg += dr * Math.min(1, 12 * dt);
+        sceneEl.style.transform = 'rotate(' + rollDeg.toFixed(2) + 'deg)';
+        if (Math.abs(Math.abs(rollDeg) - layA) > 1.5) layoutScene();
+      }
       drawDims();
       ledTick(t);
       requestAnimationFrame(tick);
@@ -556,7 +610,7 @@
       function setFov(v) {
         const prev = lastFov; lastFov = fov = clamp(v, FOV_MIN, FOV_MAX);
         const before = typeof mv.getFieldOfView === 'function' ? mv.getFieldOfView() : 0;
-        mv.fieldOfView = fov.toFixed(1) + 'deg';
+        setMvFov();
         const kick = () => { if (typeof mv.jumpCameraToGoal === 'function') mv.jumpCameraToGoal(); dirty = true; };
         kick();
         if (mv.updateComplete) mv.updateComplete.then(kick);
@@ -623,7 +677,7 @@
       // The direction the visitor faces right now becomes the fixed start direction.
       mode = 'look';
       mv.removeAttribute('camera-controls');
-      mv.fieldOfView = fov + 'deg';
+      setMvFov();
       offset = gotSensor ? lastHeading : null; sensHH = 0; if (!gotSensor) sensP = 0;
       goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
@@ -648,7 +702,7 @@
       offset = null; gotSensor = false;       // next sensor reading sets the start direction
       mode = 'look';
       mv.removeAttribute('camera-controls');
-      mv.fieldOfView = fov + 'deg';
+      setMvFov();
       sensHH = 0; sensP = 0; goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
       $('sub').textContent = 'Stage view';
@@ -679,7 +733,7 @@
       const v = portrait ? 65 : 2 * Math.atan(Math.tan(32.5 * Math.PI / 180) * 0.75) * 180 / Math.PI;
       return v;
     }
-    function applyCamFov() { if (camOn) { fov = camFov(); mv.fieldOfView = fov.toFixed(1) + 'deg'; dirty = true; } }
+    function applyCamFov() { if (camOn) { fov = camFov(); setMvFov(); dirty = true; } }
     window.addEventListener('resize', applyCamFov);
     function stopCam() {
       camOn = false;
@@ -687,7 +741,7 @@
       camStream = null; camVideo.srcObject = null;
       document.documentElement.classList.remove('cam');
       bAr.classList.remove('on');
-      fov = FOV_START; if (mode === 'look') { mv.fieldOfView = fov + 'deg'; dirty = true; }
+      fov = FOV_START; if (mode === 'look') { setMvFov(); dirty = true; }
     }
     async function startCam() {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera is not available in this browser (needs https)'); return; }
@@ -708,6 +762,8 @@
       animOn = !animOn; if (animOn) mv.play(); else mv.pause();
       $('anim').textContent = 'Animation: ' + (animOn ? 'On' : 'Off');
     });
+
+    layoutScene();
 
     // ---------- start-up ----------
     mv.addEventListener('progress', e => {
