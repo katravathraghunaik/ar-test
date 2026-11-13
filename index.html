@@ -251,7 +251,6 @@
     let sensHH = 0, sensP = 0, offset = null, lastHeading = 0, gotSensor = false;
     let yawOff = 0, pitchOff = 0, dirty = true, listening = false, ready = false;
     let motionOn = false, dimsOn = false, animOn = true;
-    let levelNext = false;
     let pending = 0, lastStep = 0, base = 9.8, prevHp = 0, freezeUntil = 0;
 
     const needsPerm = typeof DeviceOrientationEvent !== 'undefined' &&
@@ -309,7 +308,7 @@
       if (!flat) lastHeading = h;
       if (offset === null) {                              // first reading sets "straight ahead"
         if (flat) return;
-        offset = h; sensHH = 0; sensP = p; if (levelNext) { pitchOff = -p; levelNext = false; } dirty = true; return;
+        offset = h; sensHH = 0; sensP = p; dirty = true; return;
       }
       if (performance.now() < freezeUntil) return;        // finger on the screen: hold steady
       const dh = flat ? 0 : wrap(wrap(h - offset) - sensHH), dp = p - sensP;
@@ -483,21 +482,23 @@
       const t = valText(px - cx, pz - cz, curYaw());
       if (SHOW_VALUES) $('jvals').innerHTML = t.replace(/ · /g, '<br>');
     }
-    // Origin button: back to the stage centre AND facing straight ahead (start direction, level), joysticks and zoom reset.
+    // Origin button: back to the stage centre and the start direction (position + left/right turn only).
+    // Up/down tilt is not touched: phone tilted down = looking down, phone upright = looking straight.
     async function resetToOrigin() {
       if (mode === 'orbit') await toStage();            // 3D view -> stage view first
       moveS.x = moveS.y = lookS.x = lookS.y = 0;
       px = cx + SPOT.x; pz = cz + SPOT.z;                // position -> centre
       pending = 0; yawOff = 0; freezeUntil = 0;
       if (!camOn) { fov = FOV_START; mv.fieldOfView = fov + 'deg'; }
-      if (gotSensor && offset !== null) {                // the way the phone points right now = straight ahead
-        offset = lastHeading; sensHH = 0; pitchOff = -sensP;
-      } else { sensHH = 0; sensP = 0; pitchOff = 0; levelNext = true; }
+      pitchOff = 0;                                      // up/down is NOT reset: it always follows the real tilt of the phone
+      if (gotSensor && offset !== null) {                // turning (left/right): the way the phone points now = start direction
+        offset = lastHeading; sensHH = 0;
+      } else { sensHH = 0; sensP = 0; }
       computeView(); applyView(); updateVals(); dirty = true;
     }
     $('pivotBtn').addEventListener('click', e => {
       e.stopPropagation();
-      resetToOrigin().then(() => toast('Reset · at the centre, looking forward'));
+      resetToOrigin().then(() => toast('Back at the centre · facing the start direction'));
     });
 
     // ---------- camera lights: slow red <-> blue blink ----------
