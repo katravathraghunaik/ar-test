@@ -300,6 +300,7 @@
     // The viewer camera always keeps the floor level, so when the phone rolls we turn the whole picture the opposite
     // way by the phone's real roll. The virtual floor then stays level with the real floor, like the camera view.
     const sceneEl = $('scene');
+    let panX = 0, panY = 0;                                      // 3D view: two-finger drag slides the picture; the pivot never moves
     let rollDeg = 0, rollGoal = 0;
     const screenAngle = () => {
       const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle
@@ -347,7 +348,10 @@
       layoutScene(); setMvFov();
     }
     function layoutScene() {                                     // only a rotation, nothing else
-      sceneEl.style.transform = Math.abs(rollDeg) < 0.05 ? '' : 'rotate(' + rollDeg.toFixed(2) + 'deg)';
+      const tr = [];
+      if (panX || panY) tr.push('translate(' + panX.toFixed(1) + 'px,' + panY.toFixed(1) + 'px)');
+      if (Math.abs(rollDeg) >= 0.05) tr.push('rotate(' + rollDeg.toFixed(2) + 'deg)');
+      sceneEl.style.transform = tr.join(' ');
       dirty = true;
     }
     window.addEventListener('resize', baseLayout);
@@ -765,6 +769,7 @@
     }
     let orbitFitKey = '', flipReset = 0;
     async function resetOrbit(instant) {
+      panX = panY = 0; layoutScene();                     // back to the centre of the screen
       const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
       const key = innerWidth + 'x' + innerHeight;
       // The viewer ignores a value that is identical to the last one it was given, even if the user has since panned or
@@ -803,7 +808,13 @@
       baseLayout();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
-      mv.removeAttribute('disable-pan');                 // one finger = rotate, two fingers = move (pan) + pinch zoom
+      mv.setAttribute('disable-pan', '');                // the viewer's own pan (it moves the pivot, shows a dot) stays off
+      try {                                              // hide the viewer's pan dot for good
+        if (mv.shadowRoot && !mv.shadowRoot.querySelector('#nodot')) {
+          const st = document.createElement('style'); st.id = 'nodot';
+          st.textContent = '.pan-target{display:none !important}'; mv.shadowRoot.appendChild(st);
+        }
+      } catch (e) {}
       mv.setAttribute('interpolation-decay', '70');
       mv.setAttribute('touch-action', 'none');
       mv.setAttribute('orbit-sensitivity', '1');
@@ -833,6 +844,33 @@
         else { lt = now; lx = e.clientX; ly = e.clientY; }
       }, true);
     })();
+    // two-finger drag in 3D view: slide the whole picture around the screen. The pivot (model centre) is untouched,
+    // so one-finger rotation still turns the model about its own centre wherever it sits on screen.
+    (function () {
+      const ptrs = new Map(); let last = null;
+      const onUI = e => e.target.closest && e.target.closest('#top,#dock,#mcard,#jpanel');
+      const mid = () => { const p = [...ptrs.values()]; return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 }; };
+      document.addEventListener('pointerdown', e => {
+        if (mode !== 'orbit' || onUI(e)) return;
+        ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        last = ptrs.size === 2 ? mid() : null;
+      }, true);
+      document.addEventListener('pointermove', e => {
+        if (mode !== 'orbit' || !ptrs.has(e.pointerId)) return;
+        ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (ptrs.size !== 2) return;
+        const m = mid();
+        if (last) {
+          panX = clamp(panX + m.x - last.x, -innerWidth * 0.7, innerWidth * 0.7);
+          panY = clamp(panY + m.y - last.y, -innerHeight * 0.7, innerHeight * 0.7);
+          layoutScene();
+        }
+        last = m;
+      }, true);
+      const up = e => { ptrs.delete(e.pointerId); last = ptrs.size === 2 ? mid() : null; };
+      document.addEventListener('pointerup', up, true);
+      document.addEventListener('pointercancel', up, true);
+    })();
     // keep the model framed if the screen size / orientation changes while in 3D view
     window.addEventListener('resize', () => {
       if (mode !== 'orbit') return;
@@ -840,6 +878,7 @@
       window.__orbitRefit = setTimeout(() => { orbitFitKey = ''; resetOrbit(true); }, 200);
     });
     async function toStage() {
+      panX = panY = 0; layoutScene();
       await startSensors();
       offset = null; gotSensor = false;       // next sensor reading sets the start direction
       mode = 'look';
