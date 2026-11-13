@@ -11,7 +11,7 @@
     src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   <style>
     :root { --red:#e11d2e; --red-soft:rgba(225,29,46,.24); --ink:#0b0b0c; --muted:#9b9da3;
-            --glass:rgba(11,11,12,.82); --line:rgba(255,255,255,.10); }
+            --glass:rgba(11,11,12,.68); --line:rgba(255,255,255,.10); }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     html, body { margin:0; height:100%; overflow:hidden; touch-action:none; color:#f2f2f3;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -26,14 +26,14 @@
             stroke-linecap:round; stroke-linejoin:round; }
 
     .glass { background:var(--glass); border:1px solid var(--line);
-      
+      -webkit-backdrop-filter:blur(20px) saturate(1.5); backdrop-filter:blur(20px) saturate(1.5);
       box-shadow:0 10px 30px rgba(0,0,0,.32); }
 
     /* top bar */
     #top { position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); left:12px; right:12px;
       display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none; }
     #brand { display:flex; align-items:center; gap:7px; padding:5px 10px 5px 8px; border-radius:14px;
-      pointer-events:auto; cursor:pointer; text-decoration:none; color:inherit; }
+      border-left:3px solid var(--red); pointer-events:auto; cursor:pointer; text-decoration:none; color:inherit; }
     #brand:active { background:rgba(225,29,46,.22); }
     #brand img { height:34px; width:auto; display:block; border-radius:3px; image-rendering:auto; }
     #brand .t { line-height:1.25; }
@@ -140,7 +140,7 @@
   <div id="top">
     <a id="brand" class="glass" href="https://www.annapurnastudios.com/a-m-mocaplab.html" target="_blank" rel="noopener" aria-label="A&M Mocap Lab website">
       <img data-logo alt="A&M Mocap Lab">
-      <div class="t"><b>VIRTUAL STAGE</b><span id="sub">Stage view</span></div>
+      <div class="t"><b>VIRTUAL STAGE <i>v11</i></b><span id="sub">Stage view</span></div>
     </a>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
@@ -214,8 +214,8 @@
 
     // ===== SETTINGS =====
     const EYE = 1.6;          // eye height above the floor, metres
-    const SMOOTH = 0.6;       // look smoothing: lower = steadier, higher = quicker
-    const DEADZONE = 0.05;    // degrees of tiny movement ignored (removes shake)
+    const SMOOTH = 0.14;      // look smoothing: lower = steadier, higher = quicker
+    const DEADZONE = 0.22;    // degrees of tiny movement ignored (removes shake)
     const SHOW_VALUES = true; // show x, z and direction
     const SPEED = 1.5;        // joystick walking speed, metres per second
     const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
@@ -267,8 +267,7 @@
     ['pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(t =>
       window.addEventListener(t, () => { freezeUntil = performance.now() + 400; }, true));
 
-    function toast(msg, isError) {
-      if (!isError) return;
+    function toast(msg) {
       toastEl.textContent = msg; toastEl.classList.add('show');
       clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove('show'), 2600);
     }
@@ -300,7 +299,6 @@
     // The viewer camera always keeps the floor level, so when the phone rolls we turn the whole picture the opposite
     // way by the phone's real roll. The virtual floor then stays level with the real floor, like the camera view.
     const sceneEl = $('scene');
-    let panX = 0, panY = 0;                                      // 3D view: two-finger drag slides the picture; the pivot never moves
     let rollDeg = 0, rollGoal = 0;
     const screenAngle = () => {
       const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle
@@ -321,38 +319,29 @@
       const t = clamp((len - 0.08) / 0.32, 0, 1), w = t * t * (3 - 2 * t);
       rollGoal = len > 0.02 ? Math.atan2(r, u) / d * w : 0;
     }
-    // The scene is an oversized square (as wide as the screen diagonal), centred on the screen and only ROTATED.
-    // A circle of that size always covers the screen, whatever the roll, so nothing is ever scaled or zoomed:
-    // the picture keeps its exact size and sharpness. The viewer's field of view is set once for that square
-    // (it only changes on a resize or pinch), so there is no per-frame zoom change and no shimmer.
-    let sceneK = 1;                                              // square size / screen height
-    const realDpr = window.devicePixelRatio || 1;
-    let dprCap = realDpr;                                        // the bigger canvas is drawn at a capped pixel ratio to stay smooth
-    try { Object.defineProperty(window, 'devicePixelRatio', { get: () => dprCap, configurable: true }); } catch (e) {}
+    const S0 = 1;                                                // viewer keeps exactly the screen size (never resized)
+    let sceneS = 1;                                              // scale that keeps the rotated picture covering the whole screen
+    function coverScale(a) {
+      const W = innerWidth || 1, H = innerHeight || 1, t = Math.abs(a) * Math.PI / 180, c = Math.abs(Math.cos(t)), n = Math.abs(Math.sin(t));
+      return Math.max(c + (H / W) * n, c + (W / H) * n) * (1 + 0.003 * Math.min(1, Math.abs(a) / 2));
+    }
     function setMvFov() {
       if (mode === 'orbit' || !customElements.get('model-viewer')) return;
-      const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneK) * 180 / Math.PI;
+      // the picture is enlarged by sceneS, so the viewer's field of view is widened by the same factor:
+      // what you see on screen keeps exactly the zoom that is set (no zoom jump, no resizing of the viewer)
+      const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneS) * 180 / Math.PI;
       mv.fieldOfView = Math.min(f, 149).toFixed(2) + 'deg';
     }
-    function baseLayout() {                                      // runs on screen-size change and when switching views
-      const W = innerWidth || 1, H = innerHeight || 1;
-      let w = W, h = H, l = 0, t = 0;
-      if (mode === 'orbit') { sceneK = 1; dprCap = Math.min(realDpr, 2); }     // 3D view: exactly the screen, nothing cropped
-      else {
-        const D = Math.ceil(Math.hypot(W, H)) + 2;
-        sceneK = D / H; dprCap = Math.min(realDpr, 1.5, 1400 / D);
-        w = h = D; l = (W - D) / 2; t = (H - D) / 2;
-      }
-      sceneEl.style.width = w + 'px'; sceneEl.style.height = h + 'px';
-      sceneEl.style.left = l + 'px'; sceneEl.style.top = t + 'px';
-      layoutScene(); setMvFov();
+    function baseLayout() {                                      // fixed size, only changes when the screen size changes
+      const W = innerWidth, H = innerHeight;
+      sceneEl.style.width = (W * S0) + 'px'; sceneEl.style.height = (H * S0) + 'px';
+      sceneEl.style.left = (W * (1 - S0) / 2) + 'px'; sceneEl.style.top = (H * (1 - S0) / 2) + 'px';
+      layoutScene();
     }
-    function layoutScene() {                                     // only a rotation, nothing else
-      const tr = [];
-      if (panX || panY) tr.push('translate(' + panX.toFixed(1) + 'px,' + panY.toFixed(1) + 'px)');
-      if (Math.abs(rollDeg) >= 0.05) tr.push('rotate(' + rollDeg.toFixed(2) + 'deg)');
-      sceneEl.style.transform = tr.join(' ');
-      dirty = true;
+    function layoutScene() {
+      sceneS = coverScale(rollDeg);
+      sceneEl.style.transform = Math.abs(rollDeg) < 0.05 ? '' : 'rotate(' + rollDeg.toFixed(2) + 'deg) scale(' + (sceneS / S0).toFixed(4) + ')';   // no transform at all when level
+      setMvFov(); dirty = true;
     }
     window.addEventListener('resize', baseLayout);
     window.addEventListener('orientationchange', () => setTimeout(baseLayout, 250));
@@ -366,7 +355,6 @@
       return { X: x, Y: z, Z: -y };
     }
     function onOrient(e) {
-      if (mode !== 'look') return;                        // 3D View is just a viewer: phone tilt / gyro is ignored
       if (e.alpha === null || e.alpha === undefined) return;
       updateRoll(e.beta, e.gamma);
       const v = dirFromEuler(e.alpha, e.beta, e.gamma);
@@ -380,12 +368,12 @@
         offset = h; sensHH = 0; sensP = p; dirty = true; return;
       }
       rawP = p;
-      const held = false;       // finger on the screen: hold the TURN steady (up/down never held)
+      const held = performance.now() < freezeUntil;       // finger on the screen: hold the TURN steady (up/down never held)
       const dh = (flat || held) ? 0 : wrap(wrap(h - offset) - sensHH), dp = p - sensP;
       const mag = Math.hypot(dh, dp) * 180 / Math.PI;
       if (mag < DEADZONE) return;                         // ignore tiny shake
-      const a = clamp(SMOOTH + mag * 0.2, SMOOTH, 1);    // small moves are smoothed, big turns follow quickly
-      const ap = 1;   // up/down catches up faster: the floor must stay level
+      const a = clamp(SMOOTH + mag * 0.12, SMOOTH, 1);    // small moves are smoothed, big turns follow quickly
+      const ap = clamp(SMOOTH + Math.abs(dp) * 180 / Math.PI * 0.2, SMOOTH, 1);   // up/down catches up faster: the floor must stay level
       sensHH = wrap(sensHH + dh * a); sensP += dp * ap; dirty = true;
     }
     function onStep(e) {
@@ -401,9 +389,7 @@
       }
       prevHp = hp;
     }
-    let sensGen = 0;                                      // lets a pending start be cancelled when 3D View opens
     async function startSensors() {
-      const gen = ++sensGen;
       try {
         if (needsPerm) {
           await DeviceOrientationEvent.requestPermission();
@@ -413,7 +399,6 @@
           }
         }
       } catch (err) {}
-      if (gen !== sensGen) return;
       if (!listening) {
         window.addEventListener(evName, onOrient, true);
         window.addEventListener('devicemotion', onStep, true);
@@ -421,7 +406,6 @@
       }
     }
     function stopSensors() {
-      sensGen++;
       window.removeEventListener(evName, onOrient, true);
       window.removeEventListener('devicemotion', onStep, true);
       listening = false;
@@ -542,8 +526,7 @@
         }
         e.ah1.setAttribute('points', arrow(a.x, a.y, -ux, -uy));
         e.ah2.setAttribute('points', arrow(b.x, b.y, ux, uy));
-        const ox = (W - innerWidth) / 2, oy = (H - innerHeight) / 2;
-        const mx = clamp((a.x + b.x) / 2, ox + 62, ox + innerWidth - 62), my = clamp((a.y + b.y) / 2, oy + 90, oy + innerHeight - 190);   // keep the label on screen
+        const mx = clamp((a.x + b.x) / 2, 62, W - 62), my = clamp((a.y + b.y) / 2, 90, H - 190);   // keep the label on screen
         e.pill.setAttribute('x', mx - 56); e.pill.setAttribute('y', my - 18);
         e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my - 2);
         e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my + 12);
@@ -617,8 +600,8 @@
       }
       const goal = mode === 'look' ? rollGoal : 0;
       let dr = goal - rollDeg; dr = ((dr + 540) % 360) - 180;
-      if (Math.abs(dr) > 0.05) {                       // tiny sensor noise is ignored, so the picture stays still
-        rollDeg += dr * Math.min(1, 25 * dt);
+      if (Math.abs(dr) > 0.12) {                       // tiny sensor noise is ignored, so the picture stays still
+        rollDeg += dr * Math.min(1, 10 * dt);
         if (rollDeg > 180) rollDeg -= 360; else if (rollDeg < -180) rollDeg += 360;
         layoutScene();
       }
@@ -710,180 +693,23 @@
       $('sub').textContent = 'Stage view';
       b3d.classList.remove('on'); bMotion.classList.remove('dim'); bJoy.classList.remove('dim');
     }
-    // 3D view: whole stage framed on screen, smooth orbit / zoom / pan, limits so you never lose the model or go under the floor
-    let orbitR = 0;
-    // distance at which the whole stage box exactly fills the screen from the given viewing angle
-    function fitRadius(theta, phi) {
-      const c = mv.getDimensions();
-      const aspect = (mv.clientWidth || innerWidth) / (mv.clientHeight || innerHeight);
-      const tv = Math.tan(30 * Math.PI / 360), th = tv * aspect;
-      const dir = [Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta)];   // target -> camera
-      let rt = [dir[2], 0, -dir[0]]; const rl = Math.hypot(rt[0], rt[2]) || 1; rt = rt.map(v => v / rl);
-      const up = [dir[1] * rt[2] - dir[2] * rt[1], dir[2] * rt[0] - dir[0] * rt[2], dir[0] * rt[1] - dir[1] * rt[0]];
-      const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
-      let r = 0;
-      for (const sx of [-.5, .5]) for (const sy of [-.5, .5]) for (const sz of [-.5, .5]) {
-        const p = [sx * c.x, sy * c.y, sz * c.z], d = dot(p, dir);
-        r = Math.max(r, d + Math.abs(dot(p, rt)) / th, d + Math.abs(dot(p, up)) / tv);
-      }
-      return r * 1.03;                                    // hairline margin so nothing touches the edge
-    }
-    // The camera distance is first estimated by maths, then corrected by measuring where the 8 corners of the stage
-    // really land on the screen, so the stage fills the screen exactly whatever the phone's shape.
-    const frames = n => new Promise(res => { const f = () => (--n <= 0 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
-    // Default 3D angle, and a sideways/up-down shift of the camera target that is measured so the stage sits dead centre.
-    const FIT_TH = 45 * Math.PI / 180, FIT_PH = 65 * Math.PI / 180;
-    let orbitShift = [0, 0, 0];
-    async function measureFit(r, c, d, apply) {
-      const spots = [];
-      let k = 0;
-      for (const sx of [-.5, .5]) for (const sy of [-.5, .5]) for (const sz of [-.5, .5]) {
-        const b = document.createElement('button'); b.slot = 'hotspot-fit' + k; b.className = 'fitspot';
-        b.setAttribute('data-position', `${c.x + sx * d.x}m ${c.y + sy * d.y}m ${c.z + sz * d.z}m`);
-        b.setAttribute('data-normal', '0 1 0');
-        b.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;';
-        mv.appendChild(b); spots.push('hotspot-fit' + k); k++;
-      }
-      // camera right / up directions at the default angle (used to slide the target so the stage is centred)
-      const dir = [Math.sin(FIT_PH) * Math.sin(FIT_TH), Math.cos(FIT_PH), Math.sin(FIT_PH) * Math.cos(FIT_TH)];
-      let rt = [dir[2], 0, -dir[0]]; const rl = Math.hypot(rt[0], rt[2]) || 1; rt = rt.map(v => v / rl);
-      const up = [dir[1] * rt[2] - dir[2] * rt[1], dir[2] * rt[0] - dir[0] * rt[2], dir[0] * rt[1] - dir[1] * rt[0]];
-      try {
-        for (let i = 0; i < 10; i++) {
-          await frames(3);
-          const pts = spots.map(n => { const h = mv.queryHotspot(n); return h && h.canvasPosition; });
-          if (pts.some(p => !p)) break;
-          const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-          const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
-          const W = mv.clientWidth || innerWidth, H = mv.clientHeight || innerHeight;
-          const f = Math.max((maxx - minx) / (W * 0.97), (maxy - miny) / (H * 0.97));
-          const ox = (minx + maxx) / 2 - W / 2, oy = (miny + maxy) / 2 - H / 2;   // how far the stage is from the screen centre (px)
-          if (!isFinite(f) || f <= 0) break;
-          if (Math.abs(f - 1) < 0.01 && Math.abs(ox) < W * 0.004 && Math.abs(oy) < H * 0.004) break;
-          const s = 2 * r * Math.tan(15 * Math.PI / 180) / H;                      // metres per pixel at the target
-          for (let j = 0; j < 3; j++) orbitShift[j] += rt[j] * ox * s - up[j] * oy * s;
-          r *= f; apply(r, true);
-        }
-      } finally { mv.querySelectorAll('.fitspot').forEach(n => n.remove()); }
-      return r;
-    }
-    let orbitFitKey = '', flipReset = 0;
-    async function resetOrbit(instant) {
-      panX = panY = 0; layoutScene();                     // back to the centre of the screen
-      const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
-      const key = innerWidth + 'x' + innerHeight;
-      // The viewer ignores a value that is identical to the last one it was given, even if the user has since panned or
-      // rotated away. So each reset uses a value that differs by a hair, which guarantees the camera really returns.
-      const apply = (r, jump) => {
-        flipReset ^= 1; const e = flipReset * 0.0002;
-        mv.fieldOfView = (30 + e) + 'deg';
-        mv.cameraTarget = `${c.x + orbitShift[0] + e}m ${c.y + orbitShift[1] + e}m ${c.z + orbitShift[2] + e}m`;
-        mv.minCameraOrbit = `auto 5deg ${r * 0.2}m`; mv.maxCameraOrbit = `auto 90deg ${r * 3}m`;
-        mv.cameraOrbit = `${45 + e}deg ${65 + e}deg ${r + e}m`; if (jump) mv.jumpCameraToGoal();
-      };
-      if (orbitFitKey !== key) {                          // fit once per screen size, then reuse for every reset
-        orbitFitKey = key;
-        orbitShift = [0, 0, 0];
-        mv.style.opacity = '0';                           // hide the short fitting adjustments so the model simply appears, centred
-        try {
-          // wait until the viewer has really resized to the full screen
-          for (let i = 0; i < 30; i++) {
-            await frames(2);
-            if (Math.abs(mv.clientWidth - innerWidth) < 2 && Math.abs(mv.clientHeight - innerHeight) < 2) break;
-          }
-          let r = fitRadius(FIT_TH, FIT_PH);
-          apply(r, true);
-          try { r = await measureFit(r, c, d, apply); } catch (e) {}
-          orbitR = r;
-        } finally { mv.style.opacity = ''; }
-      }
-      if (mode !== 'orbit') return;
-      apply(orbitR, instant);
-    }
     function toOrbit() {
       if (camOn) stopCam();
       mode = 'orbit';
       stopSensors();
-      rollDeg = rollGoal = 0; pending = 0; motionOn = false; bMotion.classList.remove('on');
-      baseLayout();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
-      mv.setAttribute('disable-pan', '');                // the viewer's own pan (it moves the pivot, shows a dot) stays off
-      try {                                              // hide the viewer's pan dot for good
-        if (mv.shadowRoot && !mv.shadowRoot.querySelector('#nodot')) {
-          const st = document.createElement('style'); st.id = 'nodot';
-          st.textContent = '.pan-target{display:none !important}'; mv.shadowRoot.appendChild(st);
-        }
-      } catch (e) {}
-      mv.setAttribute('interpolation-decay', '70');
-      mv.setAttribute('touch-action', 'none');
-      mv.setAttribute('orbit-sensitivity', '1');
-      mv.setAttribute('zoom-sensitivity', '1');
-      orbitFitKey = '';                                  // re-measure the fit every time 3D View opens
-      resetOrbit(true);
-      $('sub').textContent = '3D view · double-tap to reset';
+      mv.cameraTarget = 'auto auto auto';
+      mv.cameraOrbit = '45deg 65deg auto';
+      mv.fieldOfView = 'auto';
+      mv.jumpCameraToGoal();
+      $('sub').textContent = '3D view · drag to rotate';
       b3d.classList.add('on'); bMotion.classList.add('dim'); bJoy.classList.add('dim');
     }
-    // double-tap anywhere on the model in 3D view -> back to the framed view
-    document.addEventListener('dblclick', e => { if (mode === 'orbit') { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
-    (function () {
-      let lt = 0, lx = 0, ly = 0, dx0 = 0, dy0 = 0, dt0 = 0, multi = 0;
-      const onUI = e => e.target.closest && e.target.closest('#top,#dock,#mcard,#jpanel');
-      document.addEventListener('pointerdown', e => {
-        if (mode !== 'orbit' || onUI(e)) return;
-        multi = Math.max(multi, e.isPrimary ? 1 : 2);     // a second finger = pinch, never a tap
-        dx0 = e.clientX; dy0 = e.clientY; dt0 = performance.now();
-      }, true);
-      document.addEventListener('pointerup', e => {
-        if (mode !== 'orbit' || onUI(e)) return;
-        const now = performance.now();
-        const wasTap = multi < 2 && Math.hypot(e.clientX - dx0, e.clientY - dy0) < 10 && now - dt0 < 300;
-        if (e.isPrimary) multi = 0;
-        if (!wasTap) { lt = 0; return; }                  // dragging to rotate / pinching is not a tap
-        if (now - lt < 350 && Math.hypot(e.clientX - lx, e.clientY - ly) < 40) { resetOrbit(false); lt = 0; }
-        else { lt = now; lx = e.clientX; ly = e.clientY; }
-      }, true);
-    })();
-    // two-finger drag in 3D view: slide the whole picture around the screen. The pivot (model centre) is untouched,
-    // so one-finger rotation still turns the model about its own centre wherever it sits on screen.
-    (function () {
-      const ptrs = new Map(); let last = null;
-      const onUI = e => e.target.closest && e.target.closest('#top,#dock,#mcard,#jpanel');
-      const mid = () => { const p = [...ptrs.values()]; return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 }; };
-      document.addEventListener('pointerdown', e => {
-        if (mode !== 'orbit' || onUI(e)) return;
-        ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        last = ptrs.size === 2 ? mid() : null;
-      }, true);
-      document.addEventListener('pointermove', e => {
-        if (mode !== 'orbit' || !ptrs.has(e.pointerId)) return;
-        ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (ptrs.size !== 2) return;
-        const m = mid();
-        if (last) {
-          panX = clamp(panX + m.x - last.x, -innerWidth * 0.7, innerWidth * 0.7);
-          panY = clamp(panY + m.y - last.y, -innerHeight * 0.7, innerHeight * 0.7);
-          layoutScene();
-        }
-        last = m;
-      }, true);
-      const up = e => { ptrs.delete(e.pointerId); last = ptrs.size === 2 ? mid() : null; };
-      document.addEventListener('pointerup', up, true);
-      document.addEventListener('pointercancel', up, true);
-    })();
-    // keep the model framed if the screen size / orientation changes while in 3D view
-    window.addEventListener('resize', () => {
-      if (mode !== 'orbit') return;
-      clearTimeout(window.__orbitRefit);
-      window.__orbitRefit = setTimeout(() => { orbitFitKey = ''; resetOrbit(true); }, 200);
-    });
     async function toStage() {
-      panX = panY = 0; layoutScene();
       await startSensors();
       offset = null; gotSensor = false;       // next sensor reading sets the start direction
       mode = 'look';
-      mv.minCameraOrbit = 'auto 0deg 0.1m'; mv.maxCameraOrbit = 'auto 180deg 200m';
-      baseLayout();
       mv.removeAttribute('camera-controls');
       setMvFov();
       sensHH = 0; sensP = 0; goToSpot(); ready = true;
@@ -927,10 +753,10 @@
       fov = FOV_START; if (mode === 'look') { setMvFov(); dirty = true; }
     }
     async function startCam() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera is not available in this browser (needs https)', true); return; }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera is not available in this browser (needs https)'); return; }
       try {
         camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-      } catch (err) { toast('Camera blocked. Allow camera permission for this page', true); return; }
+      } catch (err) { toast('Camera blocked. Allow camera permission for this page'); return; }
       camVideo.srcObject = camStream;
       try { await camVideo.play(); } catch (e) {}
       camOn = true;
@@ -940,8 +766,6 @@
       applyCamFov();
       toast('AR on · live camera behind the stage · pinch is off');
     }
-    document.addEventListener('visibilitychange', () => { if (document.hidden && camOn) stopCam(); });
-    window.addEventListener('pagehide', () => { if (camOn) stopCam(); });
     bAr.addEventListener('click', () => { if (camOn) stopCam(); else startCam(); });
     $('anim').addEventListener('click', () => {
       animOn = !animOn; if (animOn) mv.play(); else mv.pause();
