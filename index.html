@@ -722,6 +722,9 @@
     // The camera distance is first estimated by maths, then corrected by measuring where the 8 corners of the stage
     // really land on the screen, so the stage fills the screen exactly whatever the phone's shape.
     const frames = n => new Promise(res => { const f = () => (--n <= 0 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    // Default 3D angle, and a sideways/up-down shift of the camera target that is measured so the stage sits dead centre.
+    const FIT_TH = 45 * Math.PI / 180, FIT_PH = 65 * Math.PI / 180;
+    let orbitShift = [0, 0, 0];
     async function measureFit(r, c, d, apply) {
       const spots = [];
       let k = 0;
@@ -732,17 +735,24 @@
         b.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;';
         mv.appendChild(b); spots.push('hotspot-fit' + k); k++;
       }
+      // camera right / up directions at the default angle (used to slide the target so the stage is centred)
+      const dir = [Math.sin(FIT_PH) * Math.sin(FIT_TH), Math.cos(FIT_PH), Math.sin(FIT_PH) * Math.cos(FIT_TH)];
+      let rt = [dir[2], 0, -dir[0]]; const rl = Math.hypot(rt[0], rt[2]) || 1; rt = rt.map(v => v / rl);
+      const up = [dir[1] * rt[2] - dir[2] * rt[1], dir[2] * rt[0] - dir[0] * rt[2], dir[0] * rt[1] - dir[1] * rt[0]];
       try {
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 10; i++) {
           await frames(3);
           const pts = spots.map(n => { const h = mv.queryHotspot(n); return h && h.canvasPosition; });
           if (pts.some(p => !p)) break;
           const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-          const bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys);
+          const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys);
           const W = mv.clientWidth || innerWidth, H = mv.clientHeight || innerHeight;
-          const f = Math.max(bw / (W * 0.985), bh / (H * 0.985));
+          const f = Math.max((maxx - minx) / (W * 0.97), (maxy - miny) / (H * 0.97));
+          const ox = (minx + maxx) / 2 - W / 2, oy = (miny + maxy) / 2 - H / 2;   // how far the stage is from the screen centre (px)
           if (!isFinite(f) || f <= 0) break;
-          if (Math.abs(f - 1) < 0.01) break;
+          if (Math.abs(f - 1) < 0.01 && Math.abs(ox) < W * 0.004 && Math.abs(oy) < H * 0.004) break;
+          const s = 2 * r * Math.tan(15 * Math.PI / 180) / H;                      // metres per pixel at the target
+          for (let j = 0; j < 3; j++) orbitShift[j] += rt[j] * ox * s - up[j] * oy * s;
           r *= f; apply(r, true);
         }
       } finally { mv.querySelectorAll('.fitspot').forEach(n => n.remove()); }
@@ -757,20 +767,25 @@
       const apply = (r, jump) => {
         flipReset ^= 1; const e = flipReset * 0.0002;
         mv.fieldOfView = (30 + e) + 'deg';
-        mv.cameraTarget = `${c.x + e}m ${c.y + e}m ${c.z + e}m`;
+        mv.cameraTarget = `${c.x + orbitShift[0] + e}m ${c.y + orbitShift[1] + e}m ${c.z + orbitShift[2] + e}m`;
         mv.minCameraOrbit = `auto 5deg ${r * 0.2}m`; mv.maxCameraOrbit = `auto 90deg ${r * 3}m`;
         mv.cameraOrbit = `${45 + e}deg ${65 + e}deg ${r + e}m`; if (jump) mv.jumpCameraToGoal();
       };
       if (orbitFitKey !== key) {                          // fit once per screen size, then reuse for every reset
         orbitFitKey = key;
-        mv.style.visibility = 'hidden';                   // hide the short fitting adjustments so the model simply appears, centred
+        orbitShift = [0, 0, 0];
+        mv.style.opacity = '0';                           // hide the short fitting adjustments so the model simply appears, centred
         try {
-          await frames(2);                                // let the viewer finish resizing to the full screen first
-          let r = fitRadius(45 * Math.PI / 180, 65 * Math.PI / 180);
+          // wait until the viewer has really resized to the full screen
+          for (let i = 0; i < 30; i++) {
+            await frames(2);
+            if (Math.abs(mv.clientWidth - innerWidth) < 2 && Math.abs(mv.clientHeight - innerHeight) < 2) break;
+          }
+          let r = fitRadius(FIT_TH, FIT_PH);
           apply(r, true);
           try { r = await measureFit(r, c, d, apply); } catch (e) {}
           orbitR = r;
-        } finally { mv.style.visibility = ''; }
+        } finally { mv.style.opacity = ''; }
       }
       if (mode !== 'orbit') return;
       apply(orbitR, instant);
@@ -783,7 +798,7 @@
       baseLayout();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
-      mv.setAttribute('disable-pan', '');                // no panning: the model always turns around its own centre
+      mv.removeAttribute('disable-pan');                 // one finger = rotate, two fingers = move (pan) + pinch zoom
       mv.setAttribute('interpolation-decay', '70');
       mv.setAttribute('touch-action', 'none');
       mv.setAttribute('orbit-sensitivity', '1');
