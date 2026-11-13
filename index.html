@@ -712,6 +712,25 @@
     }
     // ---------- 3D view (same logic as the first version: the viewer frames the whole model and orbits its centre) ----------
     const frames = n => new Promise(res => { const f = () => (--n <= 0 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+    // Stage view draws into an oversized square canvas (for the roll effect). When 3D View opens the screen-sized layout is
+    // applied, but the viewer can keep drawing into the old square canvas, which pushes the model into a corner.
+    // So: wait until the viewer's drawing size really equals the screen, nudging it to resize if it does not.
+    async function syncViewer() {
+      const target = () => ({ w: innerWidth * dprCap, h: innerHeight * dprCap });
+      for (let i = 0; i < 60; i++) {
+        const cv = mv.shadowRoot && mv.shadowRoot.querySelector('canvas');
+        const t = target();
+        if (cv && Math.abs(cv.width - t.w) <= 3 && Math.abs(cv.height - t.h) <= 3 &&
+            Math.abs(mv.clientWidth - innerWidth) <= 1 && Math.abs(mv.clientHeight - innerHeight) <= 1) return true;
+        if (i % 8 === 1) {                                // nudge the viewer so it re-measures itself
+          mv.style.width = (innerWidth - 1) + 'px';
+          await frames(2);
+          mv.style.width = '';
+        }
+        await frames(2);
+      }
+      return false;
+    }
     let flipReset = 0;
     function resetOrbit(instant) {                        // default view: whole model framed in the centre of the screen
       if (mode !== 'orbit') return;
@@ -741,10 +760,23 @@
       mv.cameraOrbit = '45deg 65deg auto';
       mv.fieldOfView = 'auto';
       mv.jumpCameraToGoal();
-      frames(3).then(() => { if (mode === 'orbit') { mv.jumpCameraToGoal(); } });   // re-frame once the viewer has resized
+      mv.style.opacity = '0';                             // show the model only once it is framed
+      syncViewer().then(async () => {
+        if (mode !== 'orbit') return;
+        try { if (typeof mv.updateFraming === 'function') await mv.updateFraming(); } catch (e) {}
+        resetOrbit(true);
+        await frames(3);
+        if (mode === 'orbit') { resetOrbit(true); mv.jumpCameraToGoal(); }
+        mv.style.opacity = '';
+      }).catch(() => { mv.style.opacity = ''; });
       $('sub').textContent = '3D view · double-tap to reset';
       b3d.classList.add('on'); bMotion.classList.add('dim'); bJoy.classList.add('dim');
     }
+    window.addEventListener('resize', () => {
+      if (mode !== 'orbit') return;
+      clearTimeout(window.__orbitRefit);
+      window.__orbitRefit = setTimeout(async () => { await syncViewer(); resetOrbit(true); }, 250);
+    });
     // double-tap / double-click on the model in 3D view -> back to the framed default view
     document.addEventListener('dblclick', e => {
       if (mode !== 'orbit') return;
