@@ -11,7 +11,7 @@
     src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   <style>
     :root { --red:#e11d2e; --red-soft:rgba(225,29,46,.24); --ink:#0b0b0c; --muted:#9b9da3;
-            --glass:rgba(11,11,12,.68); --line:rgba(255,255,255,.10); }
+            --glass:rgba(11,11,12,.82); --line:rgba(255,255,255,.10); }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
     html, body { margin:0; height:100%; overflow:hidden; touch-action:none; color:#f2f2f3;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -26,14 +26,14 @@
             stroke-linecap:round; stroke-linejoin:round; }
 
     .glass { background:var(--glass); border:1px solid var(--line);
-      -webkit-backdrop-filter:blur(20px) saturate(1.5); backdrop-filter:blur(20px) saturate(1.5);
+      
       box-shadow:0 10px 30px rgba(0,0,0,.32); }
 
     /* top bar */
     #top { position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); left:12px; right:12px;
       display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none; }
     #brand { display:flex; align-items:center; gap:7px; padding:5px 10px 5px 8px; border-radius:14px;
-      border-left:3px solid var(--red); pointer-events:auto; cursor:pointer; text-decoration:none; color:inherit; }
+      pointer-events:auto; cursor:pointer; text-decoration:none; color:inherit; }
     #brand:active { background:rgba(225,29,46,.22); }
     #brand img { height:34px; width:auto; display:block; border-radius:3px; image-rendering:auto; }
     #brand .t { line-height:1.25; }
@@ -140,7 +140,7 @@
   <div id="top">
     <a id="brand" class="glass" href="https://www.annapurnastudios.com/a-m-mocaplab.html" target="_blank" rel="noopener" aria-label="A&M Mocap Lab website">
       <img data-logo alt="A&M Mocap Lab">
-      <div class="t"><b>VIRTUAL STAGE <i>v11</i></b><span id="sub">Stage view</span></div>
+      <div class="t"><b>VIRTUAL STAGE</b><span id="sub">Stage view</span></div>
     </a>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
@@ -214,8 +214,8 @@
 
     // ===== SETTINGS =====
     const EYE = 1.6;          // eye height above the floor, metres
-    const SMOOTH = 0.14;      // look smoothing: lower = steadier, higher = quicker
-    const DEADZONE = 0.22;    // degrees of tiny movement ignored (removes shake)
+    const SMOOTH = 0.6;       // look smoothing: lower = steadier, higher = quicker
+    const DEADZONE = 0.05;    // degrees of tiny movement ignored (removes shake)
     const SHOW_VALUES = true; // show x, z and direction
     const SPEED = 1.5;        // joystick walking speed, metres per second
     const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
@@ -267,7 +267,8 @@
     ['pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(t =>
       window.addEventListener(t, () => { freezeUntil = performance.now() + 400; }, true));
 
-    function toast(msg) {
+    function toast(msg, isError) {
+      if (!isError) return;
       toastEl.textContent = msg; toastEl.classList.add('show');
       clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove('show'), 2600);
     }
@@ -335,7 +336,7 @@
     function baseLayout() {                                      // only runs when the screen size changes
       const W = innerWidth || 1, H = innerHeight || 1, D = Math.ceil(Math.hypot(W, H)) + 2;
       sceneK = D / H;
-      dprCap = Math.min(realDpr, 2, 1800 / D);
+      dprCap = Math.min(realDpr, 1.5, 1400 / D);
       sceneEl.style.width = D + 'px'; sceneEl.style.height = D + 'px';
       sceneEl.style.left = ((W - D) / 2) + 'px'; sceneEl.style.top = ((H - D) / 2) + 'px';
       layoutScene(); setMvFov();
@@ -369,12 +370,12 @@
         offset = h; sensHH = 0; sensP = p; dirty = true; return;
       }
       rawP = p;
-      const held = performance.now() < freezeUntil;       // finger on the screen: hold the TURN steady (up/down never held)
+      const held = false;       // finger on the screen: hold the TURN steady (up/down never held)
       const dh = (flat || held) ? 0 : wrap(wrap(h - offset) - sensHH), dp = p - sensP;
       const mag = Math.hypot(dh, dp) * 180 / Math.PI;
       if (mag < DEADZONE) return;                         // ignore tiny shake
-      const a = clamp(SMOOTH + mag * 0.12, SMOOTH, 1);    // small moves are smoothed, big turns follow quickly
-      const ap = clamp(SMOOTH + Math.abs(dp) * 180 / Math.PI * 0.2, SMOOTH, 1);   // up/down catches up faster: the floor must stay level
+      const a = clamp(SMOOTH + mag * 0.2, SMOOTH, 1);    // small moves are smoothed, big turns follow quickly
+      const ap = 1;   // up/down catches up faster: the floor must stay level
       sensHH = wrap(sensHH + dh * a); sensP += dp * ap; dirty = true;
     }
     function onStep(e) {
@@ -602,8 +603,8 @@
       }
       const goal = mode === 'look' ? rollGoal : 0;
       let dr = goal - rollDeg; dr = ((dr + 540) % 360) - 180;
-      if (Math.abs(dr) > 0.12) {                       // tiny sensor noise is ignored, so the picture stays still
-        rollDeg += dr * Math.min(1, 10 * dt);
+      if (Math.abs(dr) > 0.05) {                       // tiny sensor noise is ignored, so the picture stays still
+        rollDeg += dr * Math.min(1, 25 * dt);
         if (rollDeg > 180) rollDeg -= 360; else if (rollDeg < -180) rollDeg += 360;
         layoutScene();
       }
@@ -755,10 +756,10 @@
       fov = FOV_START; if (mode === 'look') { setMvFov(); dirty = true; }
     }
     async function startCam() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera is not available in this browser (needs https)'); return; }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Camera is not available in this browser (needs https)', true); return; }
       try {
         camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-      } catch (err) { toast('Camera blocked. Allow camera permission for this page'); return; }
+      } catch (err) { toast('Camera blocked. Allow camera permission for this page', true); return; }
       camVideo.srcObject = camStream;
       try { await camVideo.play(); } catch (e) {}
       camOn = true;
@@ -768,6 +769,8 @@
       applyCamFov();
       toast('AR on · live camera behind the stage · pinch is off');
     }
+    document.addEventListener('visibilitychange', () => { if (document.hidden && camOn) stopCam(); });
+    window.addEventListener('pagehide', () => { if (camOn) stopCam(); });
     bAr.addEventListener('click', () => { if (camOn) stopCam(); else startCam(); });
     $('anim').addEventListener('click', () => {
       animOn = !animOn; if (animOn) mv.play(); else mv.pause();
