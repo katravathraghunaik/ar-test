@@ -748,15 +748,18 @@
       } finally { mv.querySelectorAll('.fitspot').forEach(n => n.remove()); }
       return r;
     }
-    let orbitFitKey = '';
+    let orbitFitKey = '', flipReset = 0;
     async function resetOrbit(instant) {
       const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
       const key = innerWidth + 'x' + innerHeight;
-      mv.fieldOfView = '30deg';
-      mv.cameraTarget = `${c.x}m ${c.y}m ${c.z}m`;
+      // The viewer ignores a value that is identical to the last one it was given, even if the user has since panned or
+      // rotated away. So each reset uses a value that differs by a hair, which guarantees the camera really returns.
       const apply = (r, jump) => {
+        flipReset ^= 1; const e = flipReset * 0.0002;
+        mv.fieldOfView = (30 + e) + 'deg';
+        mv.cameraTarget = `${c.x + e}m ${c.y + e}m ${c.z + e}m`;
         mv.minCameraOrbit = `auto 5deg ${r * 0.2}m`; mv.maxCameraOrbit = `auto 90deg ${r * 3}m`;
-        mv.cameraOrbit = `45deg 65deg ${r}m`; if (jump) mv.jumpCameraToGoal();
+        mv.cameraOrbit = `${45 + e}deg ${65 + e}deg ${r + e}m`; if (jump) mv.jumpCameraToGoal();
       };
       if (orbitFitKey !== key) {                          // fit once per screen size, then reuse for every reset
         orbitFitKey = key;
