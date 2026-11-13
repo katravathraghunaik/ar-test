@@ -127,7 +127,7 @@
     max-camera-orbit="auto 180deg 200m"
     shadow-intensity="0"
     interaction-prompt="none"
-    field-of-view="65deg"
+    field-of-view="40deg"
     min-field-of-view="5deg"
     max-field-of-view="150deg"
     alt="Mocap stage truss">
@@ -812,7 +812,7 @@
       if (mv.availableAnimations && mv.availableAnimations.length > 0) $('anim').style.display = 'block';
       $('loading').style.display = 'none';
       if (needsPerm) { $('start').style.display = 'flex'; }
-      else { enterStage(); setTimeout(applyView, 300); }
+      else { enterStage(); setTimeout(() => { if (mode === 'look') { setMvFov(); applyView(); } }, 300); setTimeout(() => { if (mode === 'look') { setMvFov(); applyView(); } }, 900); }
     });
     customElements.whenDefined('model-viewer').then(() => {
       mv.removeAttribute('camera-controls');
