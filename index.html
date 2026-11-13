@@ -39,28 +39,8 @@
     #pivotBtn { width:44px; }
     #pivotBtn svg.i { width:22px; height:22px; }
     #pivotBtn:active { background:var(--red); color:var(--ink); }
-    #arrowBtn { width:34px; margin-left:-2px; }
-    #arrowBtn svg.c { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:2.4;
-      stroke-linecap:round; stroke-linejoin:round; transition:transform .2s; }
-    #arrowBtn.open { background:var(--red); color:var(--ink); border-color:var(--red); }
-    #arrowBtn.open svg.c { transform:rotate(180deg); }
     #anim { display:none; height:44px; padding:0 14px; border-radius:22px; font-size:12px; font-weight:600;
       color:var(--red); border:1.5px solid rgba(225,29,46,.7); background:rgba(11,11,12,.82); margin-right:2px; }
-
-    /* pivot dropdown */
-    #menu { position:absolute; top:calc(env(safe-area-inset-top,0px) + 66px); right:12px; width:268px;
-      border-radius:20px; padding:6px; display:none; border-top:2px solid var(--red); }
-    #menu .it { width:100%; display:flex; align-items:center; gap:12px; border:0; background:transparent;
-      color:inherit; text-align:left; padding:10px 10px; border-radius:14px; }
-    #menu .it:active { background:var(--red-soft); }
-    #menu .ic { flex:none; width:38px; height:38px; border-radius:50%; background:var(--red); color:var(--ink);
-      display:flex; align-items:center; justify-content:center; }
-    #menu .ic svg.i { width:20px; height:20px; stroke-width:2.1; }
-    #menu .it .tx b { display:block; font-size:14px; font-weight:600; color:#f1f1f2; }
-    #menu .it .tx small { display:block; font-size:11.5px; color:var(--muted); margin-top:3px;
-      font-variant-numeric:tabular-nums; }
-    #menu .ft { padding:9px 12px 7px; font-size:11px; color:var(--red); border-top:1px solid var(--line);
-      font-variant-numeric:tabular-nums; }
 
     /* measurements */
     #mcard { position:absolute; top:calc(env(safe-area-inset-top,0px) + 70px); left:12px;
@@ -156,21 +136,10 @@
     </a>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
-      <button id="pivotBtn" class="tbtn" aria-label="Go to pivot">
+      <button id="pivotBtn" class="tbtn" aria-label="Set current position as pivot">
         <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4.2M12 17.3v4.2M2.5 12h4.2M17.3 12h4.2"/></svg>
       </button>
-      <button id="arrowBtn" class="tbtn" aria-label="Pivot options">
-        <svg class="c" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
     </div>
-  </div>
-
-  <div id="menu" class="glass">
-    <button class="it" id="m-lock">
-      <span class="ic"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8 10.5V7.8a4 4 0 018 0v2.7"/></svg></span>
-      <span class="tx"><b>Set current position as pivot</b><small id="m-now">x 0.00 · z 0.00 · 0°</small></span>
-    </button>
-    <div class="ft" id="m-ft">Pivot · start point</div>
   </div>
 
   <div id="mcard" class="glass"><h4 id="mhead">TRUSS DIMENSIONS</h4><div id="mbody"></div></div>
@@ -225,8 +194,8 @@
 
     // ===== START POINT =====
     // x, z = metres from the CENTRE of the stage (the green square on the floor).
-    // 0, 0 = standing in the middle of the grid. The Pivot button returns to this same point
-    // (unless you saved your own pivot from the menu, in which case the page also starts there).
+    // 0, 0 = standing in the middle of the grid. The Pivot button saves your current position as the pivot
+    // (unless you saved your own pivot with the Pivot button, in which case the page starts there).
     // yaw = direction faced at the start: 0 = toward -z, 90 = toward +x, 180 = toward +z, 270 = toward -x.
     const SPOT = { x: 0, z: 0, yaw: 0 };
     // ========================
@@ -394,12 +363,20 @@
     makeJoy($('padLook'), $('knLook'), lookS);
 
     // ---------- measurements: dimension lines drawn on the truss ----------
+    // 3D view: one fixed, one-sided set (front width, left depth, front-left pole).
+    // Stage view: the lines are picked from the direction you are looking, so they always sit in front of you.
     const HW = STAGE.w / 2, HD = STAGE.d / 2, OFF = 0.45;
     const DIMS = [
-      { name:'Width',  a:[-HW, 0.05, HD + OFF],       b:[HW, 0.05, HD + OFF] },          // along the front edge
-      { name:'Depth',  a:[-HW - OFF, 0.05, -HD],      b:[-HW - OFF, 0.05, HD] },         // along the left edge
-      { name:'Height', a:[-HW - OFF, 0, HD + OFF],    b:[-HW - OFF, STAGE.h, HD + OFF] } // front-left pole, floor to top
+      { name:'Width',  a:[-HW, 0.05, HD + OFF],       b:[HW, 0.05, HD + OFF] },            // 0 front wall
+      { name:'Width',  a:[-HW, 0.05, -HD - OFF],      b:[HW, 0.05, -HD - OFF] },           // 1 back wall
+      { name:'Depth',  a:[-HW - OFF, 0.05, -HD],      b:[-HW - OFF, 0.05, HD] },           // 2 left wall
+      { name:'Depth',  a:[HW + OFF, 0.05, -HD],       b:[HW + OFF, 0.05, HD] },            // 3 right wall
+      { name:'Height', a:[-HW - OFF, 0, HD + OFF],    b:[-HW - OFF, STAGE.h, HD + OFF] },  // 4 front-left pole
+      { name:'Height', a:[HW + OFF, 0, HD + OFF],     b:[HW + OFF, STAGE.h, HD + OFF] },   // 5 front-right pole
+      { name:'Height', a:[-HW - OFF, 0, -HD - OFF],   b:[-HW - OFF, STAGE.h, -HD - OFF] }, // 6 back-left pole
+      { name:'Height', a:[HW + OFF, 0, -HD - OFF],    b:[HW + OFF, STAGE.h, -HD - OFF] }   // 7 back-right pole
     ];
+    const ORBIT_SET = [0, 2, 4];
     DIMS.forEach(d => { d.len = Math.hypot(d.a[0]-d.b[0], d.a[1]-d.b[1], d.a[2]-d.b[2]); });
     const fmtM = v => v.toFixed(2) + ' m', fmtF = v => (v * 3.28084).toFixed(1) + ' ft';
     (function buildCard() {
@@ -431,7 +408,7 @@
         const pill = mk('rect', { width:'112', height:'36', rx:'10', fill:'rgba(11,11,12,.9)', stroke:'#e11d2e', 'stroke-width':'1.6' });
         const t1 = mk('text', { fill:'#ffffff', 'font-size':'13', 'font-weight':'700' }); t1.textContent = fmtM(d.len);
         const t2 = mk('text', { fill:'#b9bbc0', 'font-size':'10.5', 'font-weight':'500' }); t2.textContent = d.name + ' · ' + fmtF(d.len);
-        svg.appendChild(g); dimEls.push({ g, under, line, ah1, ah2, pill, t1, t2 });
+        svg.appendChild(g); g.style.display = 'none'; dimEls.push({ g, under, line, ah1, ah2, pill, t1, t2 });
       });
       dimsBuilt = true;
     }
@@ -448,15 +425,27 @@
       if (mode !== 'look') return true;
       return (p[0]-px)*view.dx + (p[1]-eyeY())*view.dy + (p[2]-pz)*view.dz > 0.2;
     }
+    // which lines to draw right now
+    function activeDims() {
+      if (mode !== 'look') return ORBIT_SET;                       // 3D view: fixed, one-sided
+      const hl = Math.hypot(view.dx, view.dz) || 1, vx = view.dx / hl, vz = view.dz / hl;
+      const seen = i => inFront(abs3(DIMS[i].a)) && inFront(abs3(DIMS[i].b));
+      const score = i => {                                         // how centred it is in the direction you look
+        const d = DIMS[i], mx = cx + (d.a[0] + d.b[0]) / 2 - px, mz = cz + (d.a[2] + d.b[2]) / 2 - pz;
+        return (mx * vx + mz * vz) / (Math.hypot(mx, mz) || 1);
+      };
+      const best = list => list.filter(seen).sort((p, q) => score(q) - score(p))[0];
+      return [best([0, 1]), best([2, 3]), best([4, 5, 6, 7])].filter(i => i !== undefined);
+    }
     function drawDims() {
       if (!dimsOn || !dimsBuilt) { svg.style.display = 'none'; return; }
       svg.style.display = 'block';
-      DIMS.forEach((d, i) => {
-        const e = dimEls[i];
+      const act = activeDims(), W = svg.clientWidth || innerWidth, H = svg.clientHeight || innerHeight;
+      dimEls.forEach((e, i) => { if (!act.includes(i)) e.g.style.display = 'none'; });
+      act.forEach(i => {
+        const d = DIMS[i], e = dimEls[i];
         const ha = mv.queryHotspot('hotspot-d' + i + 'a'), hb = mv.queryHotspot('hotspot-d' + i + 'b');
-        const A = abs3(d.a), B = abs3(d.b);
-        let show = !!(ha && hb && inFront(A) && inFront(B));
-        let a, b, L = 0;
+        let show = !!(ha && hb), a, b, L = 0;
         if (show) { a = ha.canvasPosition; b = hb.canvasPosition; L = Math.hypot(b.x - a.x, b.y - a.y); show = L > 44; }
         if (!show) { e.g.style.display = 'none'; return; }
         e.g.style.display = '';
@@ -467,7 +456,7 @@
         }
         e.ah1.setAttribute('points', arrow(a.x, a.y, -ux, -uy));
         e.ah2.setAttribute('points', arrow(b.x, b.y, ux, uy));
-        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        const mx = clamp((a.x + b.x) / 2, 62, W - 62), my = clamp((a.y + b.y) / 2, 90, H - 190);   // keep the label on screen
         e.pill.setAttribute('x', mx - 56); e.pill.setAttribute('y', my - 18);
         e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my - 2);
         e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my + 12);
@@ -475,47 +464,20 @@
     }
 
     // ---------- pivot (remembered on this phone) ----------
-    let pivot = null, menuOpen = false;
+    let pivot = null;
     try { pivot = JSON.parse(localStorage.getItem('stagePivot') || 'null'); } catch (e) {}
     const valText = (x, z, yaw) => 'x ' + x.toFixed(2) + ' · z ' + z.toFixed(2) + ' · ' + Math.round(yaw) + '°';
-    function refreshPivotText() {
-      $('m-ft').textContent = pivot ? 'Pivot · ' + valText(pivot.x, pivot.z, pivot.yaw) : 'Pivot · start point';
-    }
-    refreshPivotText();
     function updateVals() {
       const t = valText(px - cx, pz - cz, curYaw());
       if (SHOW_VALUES) $('jvals').innerHTML = t.replace(/ · /g, '<br>');
-      if (menuOpen) $('m-now').textContent = 'Now: ' + t;
     }
-    function goToPivot() {
-      mode = 'look'; mv.removeAttribute('camera-controls'); mv.fieldOfView = '65deg';
-      px = cx + pivot.x; pz = cz + pivot.z; pending = 0; pitchOff = 0;
-      yawOff = wrap(pivot.yaw * Math.PI / 180 - sensHH - baseYaw);     // face the locked direction
-      ready = true; computeView(); applyView(); dirty = true;
-      $('sub').textContent = 'Stage view';
-      b3d.classList.remove('on'); bMotion.classList.remove('dim'); bJoy.classList.remove('dim');
-    }
-    function setMenu(open) {
-      menuOpen = open;
-      $('menu').style.display = open ? 'block' : 'none';
-      $('arrowBtn').classList.toggle('open', open);
-      if (open) updateVals();
-    }
-    // Pivot button: go back to the pivot.  Small arrow: options (set the current position as pivot).
-    $('pivotBtn').addEventListener('click', async e => {
-      e.stopPropagation(); setMenu(false);
-      if (mode === 'orbit') await toStage();
-      if (pivot) { goToPivot(); toast('Back at your locked pivot'); }
-      else { enterStage(); toast('Back at the start point'); }
-    });
-    $('arrowBtn').addEventListener('click', e => { e.stopPropagation(); setMenu(!menuOpen); });
-    $('menu').addEventListener('click', e => e.stopPropagation());
-    window.addEventListener('click', () => { if (menuOpen) setMenu(false); });
-    $('m-lock').addEventListener('click', () => {
-      if (mode !== 'look') { toast('Switch to stage view to lock a position'); setMenu(false); return; }
+    // Pivot button: sets your current position and direction as the pivot (the page starts there next time).
+    $('pivotBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      if (mode !== 'look') { toast('Switch to stage view to set the pivot'); return; }
       pivot = { x: px - cx, z: pz - cz, yaw: curYaw() };
-      try { localStorage.setItem('stagePivot', JSON.stringify(pivot)); } catch (e) {}
-      refreshPivotText(); setMenu(false); toast('Pivot set at your current position');
+      try { localStorage.setItem('stagePivot', JSON.stringify(pivot)); } catch (err) {}
+      toast('Pivot set at your current position');
     });
 
     // ---------- camera lights: slow red <-> blue blink ----------
