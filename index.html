@@ -132,7 +132,7 @@
 </head>
 <body>
   <model-viewer id="mv"
-    src="Mocap_Truss_stage.glb?v=2"
+    src="Mocap_Truss_stage.glb?v=3"
     autoplay
     ar
     ar-modes="webxr scene-viewer quick-look"
@@ -518,6 +518,23 @@
       refreshPivotText(); setMenu(false); toast('Pivot set at your current position');
     });
 
+    // ---------- camera lights: slow red <-> blue blink ----------
+    const LED_RED = [0.90, 0.05, 0.07], LED_BLUE = [0.05, 0.25, 1.0];
+    const LED_PERIOD = 6;                    // seconds for one full red -> blue -> red cycle (higher = slower)
+    let ledMat = null, ledLast = 0;
+    function ledInit() {
+      const mats = (mv.model && mv.model.materials) || [];
+      ledMat = mats.find(m => m.name === 'Cam_LED_Red') || null;
+    }
+    function ledTick(t) {
+      if (!ledMat || t - ledLast < 70) return;            // ~14 updates a second is plenty for a slow fade
+      ledLast = t;
+      const k = (1 - Math.cos(2 * Math.PI * t / 1000 / LED_PERIOD)) / 2;   // smooth 0 -> 1 -> 0
+      const c = LED_RED.map((r, i) => r + (LED_BLUE[i] - r) * k);
+      ledMat.pbrMetallicRoughness.setBaseColorFactor([c[0], c[1], c[2], 1]);
+      ledMat.setEmissiveFactor(c);
+    }
+
     // ---------- main loop ----------
     let lastT = performance.now();
     function tick(t) {
@@ -540,6 +557,7 @@
         if (dirty && ready) { computeView(); applyView(); dirty = false; updateVals(); }
       }
       drawDims();
+      ledTick(t);
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
@@ -615,6 +633,7 @@
     mv.addEventListener('load', () => {
       const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
       cx = c.x; cz = c.z; floorY = c.y - d.y / 2;
+      ledInit();
       if (mv.availableAnimations && mv.availableAnimations.length > 0) $('anim').style.display = 'block';
       $('loading').style.display = 'none';
       if (needsPerm) { $('start').style.display = 'flex'; }
