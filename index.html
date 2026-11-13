@@ -319,29 +319,30 @@
       const t = clamp((len - 0.08) / 0.32, 0, 1), w = t * t * (3 - 2 * t);
       rollGoal = len > 0.02 ? Math.atan2(r, u) / d * w : 0;
     }
-    const S0 = 1;                                                // viewer keeps exactly the screen size (never resized)
-    let sceneS = 1;                                              // scale that keeps the rotated picture covering the whole screen
-    function coverScale(a) {
-      const W = innerWidth || 1, H = innerHeight || 1, t = Math.abs(a) * Math.PI / 180, c = Math.abs(Math.cos(t)), n = Math.abs(Math.sin(t));
-      return Math.max(c + (H / W) * n, c + (W / H) * n) * (1 + 0.003 * Math.min(1, Math.abs(a) / 2));
-    }
+    // The scene is an oversized square (as wide as the screen diagonal), centred on the screen and only ROTATED.
+    // A circle of that size always covers the screen, whatever the roll, so nothing is ever scaled or zoomed:
+    // the picture keeps its exact size and sharpness. The viewer's field of view is set once for that square
+    // (it only changes on a resize or pinch), so there is no per-frame zoom change and no shimmer.
+    let sceneK = 1;                                              // square size / screen height
+    const realDpr = window.devicePixelRatio || 1;
+    let dprCap = realDpr;                                        // the bigger canvas is drawn at a capped pixel ratio to stay smooth
+    try { Object.defineProperty(window, 'devicePixelRatio', { get: () => dprCap, configurable: true }); } catch (e) {}
     function setMvFov() {
       if (mode === 'orbit' || !customElements.get('model-viewer')) return;
-      // the picture is enlarged by sceneS, so the viewer's field of view is widened by the same factor:
-      // what you see on screen keeps exactly the zoom that is set (no zoom jump, no resizing of the viewer)
-      const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneS) * 180 / Math.PI;
+      const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneK) * 180 / Math.PI;
       mv.fieldOfView = Math.min(f, 149).toFixed(2) + 'deg';
     }
-    function baseLayout() {                                      // fixed size, only changes when the screen size changes
-      const W = innerWidth, H = innerHeight;
-      sceneEl.style.width = (W * S0) + 'px'; sceneEl.style.height = (H * S0) + 'px';
-      sceneEl.style.left = (W * (1 - S0) / 2) + 'px'; sceneEl.style.top = (H * (1 - S0) / 2) + 'px';
-      layoutScene();
+    function baseLayout() {                                      // only runs when the screen size changes
+      const W = innerWidth || 1, H = innerHeight || 1, D = Math.ceil(Math.hypot(W, H)) + 2;
+      sceneK = D / H;
+      dprCap = Math.min(realDpr, 2, 1800 / D);
+      sceneEl.style.width = D + 'px'; sceneEl.style.height = D + 'px';
+      sceneEl.style.left = ((W - D) / 2) + 'px'; sceneEl.style.top = ((H - D) / 2) + 'px';
+      layoutScene(); setMvFov();
     }
-    function layoutScene() {
-      sceneS = coverScale(rollDeg);
-      sceneEl.style.transform = Math.abs(rollDeg) < 0.05 ? '' : 'rotate(' + rollDeg.toFixed(2) + 'deg) scale(' + (sceneS / S0).toFixed(4) + ')';   // no transform at all when level
-      setMvFov(); dirty = true;
+    function layoutScene() {                                     // only a rotation, nothing else
+      sceneEl.style.transform = Math.abs(rollDeg) < 0.05 ? '' : 'rotate(' + rollDeg.toFixed(2) + 'deg)';
+      dirty = true;
     }
     window.addEventListener('resize', baseLayout);
     window.addEventListener('orientationchange', () => setTimeout(baseLayout, 250));
@@ -526,7 +527,8 @@
         }
         e.ah1.setAttribute('points', arrow(a.x, a.y, -ux, -uy));
         e.ah2.setAttribute('points', arrow(b.x, b.y, ux, uy));
-        const mx = clamp((a.x + b.x) / 2, 62, W - 62), my = clamp((a.y + b.y) / 2, 90, H - 190);   // keep the label on screen
+        const ox = (W - innerWidth) / 2, oy = (H - innerHeight) / 2;
+        const mx = clamp((a.x + b.x) / 2, ox + 62, ox + innerWidth - 62), my = clamp((a.y + b.y) / 2, oy + 90, oy + innerHeight - 190);   // keep the label on screen
         e.pill.setAttribute('x', mx - 56); e.pill.setAttribute('y', my - 18);
         e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my - 2);
         e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my + 12);
