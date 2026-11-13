@@ -693,16 +693,35 @@
       $('sub').textContent = 'Stage view';
       b3d.classList.remove('on'); bMotion.classList.remove('dim'); bJoy.classList.remove('dim');
     }
+    // The 3D view's starting camera (same size, position, rotation every time).
+    function resetOrbit() {
+      mv.cameraTarget = 'auto auto auto';
+      mv.cameraOrbit = '45deg 65deg auto';
+      mv.fieldOfView = 'auto';
+      mv.jumpCameraToGoal();
+    }
+    // Double-tap / double-click in the 3D view: model-viewer's built-in reset goes back to the HTML attributes
+    // (fixed 65deg field of view, stage-view settings), which makes the model look tiny.
+    // So we put the camera back to the proper 3D start view ourselves, right after the built-in reset has run.
+    (function () {
+      let lastT = 0, lastX = 0, lastY = 0;
+      const fix = () => { if (mode === 'orbit') resetOrbit(); };
+      const doReset = () => { fix(); requestAnimationFrame(fix); setTimeout(fix, 60); setTimeout(fix, 250); };
+      mv.addEventListener('dblclick', () => { if (mode === 'orbit') doReset(); }, true);
+      mv.addEventListener('pointerup', e => {
+        if (mode !== 'orbit' || e.pointerType === 'mouse') return;      // mouse is handled by dblclick
+        const t = performance.now();
+        if (t - lastT < 350 && Math.hypot(e.clientX - lastX, e.clientY - lastY) < 30) { lastT = 0; doReset(); }
+        else { lastT = t; lastX = e.clientX; lastY = e.clientY; }
+      }, true);
+    })();
     function toOrbit() {
       if (camOn) stopCam();
       mode = 'orbit';
       stopSensors();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
-      mv.cameraTarget = 'auto auto auto';
-      mv.cameraOrbit = '45deg 65deg auto';
-      mv.fieldOfView = 'auto';
-      mv.jumpCameraToGoal();
+      resetOrbit();
       $('sub').textContent = '3D view · drag to rotate';
       b3d.classList.add('on'); bMotion.classList.add('dim'); bJoy.classList.add('dim');
     }
