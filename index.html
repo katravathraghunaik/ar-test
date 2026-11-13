@@ -763,11 +763,16 @@
       };
       if (orbitFitKey !== key) {                          // fit once per screen size, then reuse for every reset
         orbitFitKey = key;
-        let r = fitRadius(45 * Math.PI / 180, 65 * Math.PI / 180);
-        apply(r, true);
-        try { r = await measureFit(r, c, d, apply); } catch (e) {}
-        orbitR = r;
+        mv.style.visibility = 'hidden';                   // hide the short fitting adjustments so the model simply appears, centred
+        try {
+          await frames(2);                                // let the viewer finish resizing to the full screen first
+          let r = fitRadius(45 * Math.PI / 180, 65 * Math.PI / 180);
+          apply(r, true);
+          try { r = await measureFit(r, c, d, apply); } catch (e) {}
+          orbitR = r;
+        } finally { mv.style.visibility = ''; }
       }
+      if (mode !== 'orbit') return;
       apply(orbitR, instant);
     }
     function toOrbit() {
@@ -778,10 +783,12 @@
       baseLayout();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
+      mv.setAttribute('disable-pan', '');                // no panning: the model always turns around its own centre
       mv.setAttribute('interpolation-decay', '70');
       mv.setAttribute('touch-action', 'none');
       mv.setAttribute('orbit-sensitivity', '1');
       mv.setAttribute('zoom-sensitivity', '1');
+      orbitFitKey = '';                                  // re-measure the fit every time 3D View opens
       resetOrbit(true);
       $('sub').textContent = '3D view · double-tap to reset';
       b3d.classList.add('on'); bMotion.classList.add('dim'); bJoy.classList.add('dim');
@@ -789,14 +796,29 @@
     // double-tap anywhere on the model in 3D view -> back to the framed view
     document.addEventListener('dblclick', e => { if (mode === 'orbit') { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
     (function () {
-      let lt = 0, lx = 0, ly = 0;
+      let lt = 0, lx = 0, ly = 0, dx0 = 0, dy0 = 0, dt0 = 0, multi = 0;
+      const onUI = e => e.target.closest && e.target.closest('#top,#dock,#mcard,#jpanel');
+      document.addEventListener('pointerdown', e => {
+        if (mode !== 'orbit' || onUI(e)) return;
+        multi = Math.max(multi, e.isPrimary ? 1 : 2);     // a second finger = pinch, never a tap
+        dx0 = e.clientX; dy0 = e.clientY; dt0 = performance.now();
+      }, true);
       document.addEventListener('pointerup', e => {
-        if (mode !== 'orbit' || (e.target.closest && e.target.closest('#top,#dock,#mcard,#jpanel'))) return;
+        if (mode !== 'orbit' || onUI(e)) return;
         const now = performance.now();
-        if (now - lt < 320 && Math.hypot(e.clientX - lx, e.clientY - ly) < 40) { resetOrbit(false); lt = 0; }
+        const wasTap = multi < 2 && Math.hypot(e.clientX - dx0, e.clientY - dy0) < 10 && now - dt0 < 300;
+        if (e.isPrimary) multi = 0;
+        if (!wasTap) { lt = 0; return; }                  // dragging to rotate / pinching is not a tap
+        if (now - lt < 350 && Math.hypot(e.clientX - lx, e.clientY - ly) < 40) { resetOrbit(false); lt = 0; }
         else { lt = now; lx = e.clientX; ly = e.clientY; }
       }, true);
     })();
+    // keep the model framed if the screen size / orientation changes while in 3D view
+    window.addEventListener('resize', () => {
+      if (mode !== 'orbit') return;
+      clearTimeout(window.__orbitRefit);
+      window.__orbitRefit = setTimeout(() => { orbitFitKey = ''; resetOrbit(true); }, 200);
+    });
     async function toStage() {
       await startSensors();
       offset = null; gotSensor = false;       // next sensor reading sets the start direction
