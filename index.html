@@ -329,12 +329,26 @@
     const realDpr = window.devicePixelRatio || 1;
     let dprCap = realDpr;                                        // the bigger canvas is drawn at a capped pixel ratio to stay smooth
     try { Object.defineProperty(window, 'devicePixelRatio', { get: () => dprCap, configurable: true }); } catch (e) {}
-    let fovFlip = 0;
+    let fovFlip = 0, fovGoal = 65, fovTimers = [];
+    const ctlSymbol = () => Object.getOwnPropertySymbols(mv).find(k => k.description === 'controls');
+    function verifyFov() {                                       // the viewer sometimes ignores the property: check its real angle and force it
+      if (mode !== 'look') return;
+      try {
+        const now = mv.getFieldOfView();
+        if (now && Math.abs(now - fovGoal) > 0.4) {
+          const c = mv[ctlSymbol()];
+          c.setFieldOfView(fovGoal); c.jumpToGoal(); dirty = true;
+        }
+      } catch (e) {}
+    }
     function setMvFov() {
       if (mode === 'orbit' || !customElements.get('model-viewer')) return;
-      const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneK) * 180 / Math.PI;
+      const f = Math.min(2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneK) * 180 / Math.PI, 149);
+      fovGoal = f;
       fovFlip ^= 1;                                              // the viewer ignores a value equal to its last one, so differ by a hair
-      mv.fieldOfView = (Math.min(f, 149) + fovFlip * 0.003).toFixed(3) + 'deg';
+      mv.fieldOfView = (f + fovFlip * 0.003).toFixed(3) + 'deg';
+      fovTimers.forEach(clearTimeout);
+      fovTimers = [60, 200, 500, 1100].map(ms => setTimeout(verifyFov, ms));
     }
     function baseLayout() {                                      // runs on screen-size change and when switching views
       const W = innerWidth || 1, H = innerHeight || 1;
