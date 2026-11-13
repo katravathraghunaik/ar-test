@@ -143,6 +143,8 @@
     shadow-intensity="0"
     interaction-prompt="none"
     field-of-view="65deg"
+    min-field-of-view="20deg"
+    max-field-of-view="110deg"
     alt="Mocap stage truss">
     <div slot="progress-bar"></div>
   </model-viewer>
@@ -156,22 +158,12 @@
     </a>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
-      <button id="pivotBtn" class="tbtn" aria-label="Go to pivot">
+      <button id="pivotBtn" class="tbtn" aria-label="Go to origin">
         <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4.2M12 17.3v4.2M2.5 12h4.2M17.3 12h4.2"/></svg>
-      </button>
-      <button id="arrowBtn" aria-label="Pivot options">
-        <svg class="c" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
       </button>
     </div>
   </div>
 
-  <div id="menu" class="glass">
-    <button class="it" id="m-lock">
-      <span class="ic"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.2"/><path d="M8 10.5V7.8a4 4 0 018 0v2.7"/></svg></span>
-      <span class="tx"><b>Set current position as pivot</b><small id="m-now">x 0.00 · z 0.00 · 0°</small></span>
-    </button>
-    <div class="ft" id="m-ft">Pivot · centre of the stage</div>
-  </div>
 
   <div id="mcard" class="glass"><h4 id="mhead">TRUSS DIMENSIONS</h4><div id="mbody"></div></div>
 
@@ -226,7 +218,7 @@
     // ===== START POINT = centre of the stage (the green + on the floor) =====
     // x, z = metres from the centre.
     // yaw  = direction faced at the start: 0 = toward -z, 90 = toward +x, 180 = toward +z, 270 = toward -x.
-    const SPOT = { x: 0, z: 0, yaw: 0 };
+    const SPOT = { x: 0, z: 0, yaw: 0 };   // yaw 0 = facing the long (width) side of the truss
     // ================================
 
     // ===== TRUSS SIZE (metres, measured from the model; used by Measure) =====
@@ -236,8 +228,10 @@
 
     // ===== SETTINGS =====
     const EYE = 1.6;          // eye height above the floor, metres
-    const SMOOTH = 0.14;      // look smoothing: lower = steadier, higher = quicker
-    const DEADZONE = 0.22;    // degrees of tiny movement ignored (removes shake)
+    const SMOOTH = 0.10;      // look smoothing: lower = steadier, higher = quicker
+    const DEADZONE = 0.45;    // degrees of tiny movement ignored (removes shake)
+    const FOV0 = 65;          // fixed lens (field of view, degrees) - this is the default and the Origin reset
+    const FOV_MIN = 25, FOV_MAX = 100;  // pinch zoom limits
     const SHOW_VALUES = true; // show x, z and direction
     const SPEED = 1.5;        // joystick walking speed, metres per second
     const LOOK_YAW = 70;      // look joystick turn speed, degrees per second
@@ -262,6 +256,8 @@
     const m2 = v => v.toFixed(2) + ' m  ·  ' + (v * 3.28084).toFixed(1) + ' ft';
 
     let cx = 0, cz = 0, floorY = 0;
+    let fov = FOV0;
+    function setFov(v) { fov = clamp(v, FOV_MIN, FOV_MAX); if (mode === 'look') { mv.fieldOfView = fov + 'deg'; applyView(); } }
     const eyeY = () => floorY + EYE;
 
     let mode = 'look';                       // 'look' or 'orbit'
@@ -306,7 +302,7 @@
     }
     // Home = your locked pivot if you set one on this phone, otherwise the centre of the stage.
     // The page starts here and the Pivot button returns here, so they are always the same point.
-    const home = () => pivot || SPOT;
+    const home = () => ({ x:0, z:0, yaw:0 });   // always the exact centre, facing the width side
     function goToSpot() {
       const h = home(); baseYaw = h.yaw * Math.PI / 180;
       px = cx + h.x; pz = cz + h.z; pending = 0; yawOff = 0; pitchOff = 0; dirty = true;
@@ -336,7 +332,7 @@
       const dh = flat ? 0 : wrap(wrap(h - offset) - sensHH), dp = p - sensP;
       const mag = Math.hypot(dh, dp) * 180 / Math.PI;
       if (mag < DEADZONE) return;                         // ignore tiny shake
-      const a = clamp(SMOOTH + mag * 0.12, SMOOTH, 1);    // small moves are smoothed, big turns follow quickly
+      const a = clamp(SMOOTH + mag * 0.06, SMOOTH, 1);    // small moves are smoothed, big turns follow quickly
       sensHH = wrap(sensHH + dh * a); sensP += dp * a; dirty = true;
     }
     function onStep(e) {
@@ -480,38 +476,46 @@
 
     // ---------- pivot (remembered on this phone) ----------
     let pivot = null, menuOpen = false;
-    try { pivot = JSON.parse(localStorage.getItem('stagePivot2') || 'null'); } catch (e) {}
+    try { localStorage.removeItem('stagePivot2'); } catch (e) {}   // old saved pivots no longer used
     const valText = (x, z, yaw) => 'x ' + x.toFixed(2) + ' · z ' + z.toFixed(2) + ' · ' + Math.round(yaw) + '°';
-    function refreshPivotText() {
-      $('m-ft').textContent = pivot ? 'Pivot · ' + valText(pivot.x, pivot.z, pivot.yaw) : 'Pivot · centre of the stage';
-    }
-    refreshPivotText();
+    function refreshPivotText() {}
     function updateVals() {
       const t = valText(px - cx, pz - cz, curYaw());
       if (SHOW_VALUES) $('jvals').innerHTML = t.replace(/ · /g, '<br>');
-      if (menuOpen) $('m-now').textContent = 'Now: ' + t;
+      
     }
     function setMenu(open) {
       menuOpen = open;
-      $('menu').style.display = open ? 'block' : 'none';
-      $('arrowBtn').classList.toggle('open', open);
       if (open) updateVals();
     }
     // Pivot button: go back to the pivot.  Small arrow: options (set the current position as pivot).
     $('pivotBtn').addEventListener('click', async e => {
-      e.stopPropagation(); setMenu(false);
+      e.stopPropagation();
       if (mode === 'orbit') await toStage();
-      enterStage(); toast(pivot ? 'Back at your pivot' : 'Back at the centre of the stage');
+      enterStage(); pitchOff = -sensP;   // re-align: exact centre, facing the width side, level
+      setFov(FOV0); dirty = true; toast('Origin · centre of the stage');
     });
-    $('arrowBtn').addEventListener('click', e => { e.stopPropagation(); setMenu(!menuOpen); });
-    $('menu').addEventListener('click', e => e.stopPropagation());
-    window.addEventListener('click', () => { if (menuOpen) setMenu(false); });
-    $('m-lock').addEventListener('click', () => {
-      if (mode !== 'look') { toast('Switch to stage view to lock a position'); setMenu(false); return; }
-      pivot = { x: px - cx, z: pz - cz, yaw: curYaw() };
-      try { localStorage.setItem('stagePivot2', JSON.stringify(pivot)); } catch (e) {}
-      refreshPivotText(); setMenu(false); toast('Pivot set at your current position');
-    });
+
+    // ---------- pinch zoom: fingers apart = zoom in, fingers together = zoom out ----------
+    (function () {
+      const pts = new Map(); let d0 = 0, f0 = FOV0;
+      const skip = t => t.closest && t.closest('#dock, #top, #jpanel, #mcard, .ov');
+      window.addEventListener('pointerdown', e => {
+        if (skip(e.target)) return;
+        pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+        if (pts.size === 2) { const [a, b] = [...pts.values()]; d0 = Math.hypot(a.x-b.x, a.y-b.y); f0 = fov; }
+      });
+      window.addEventListener('pointermove', e => {
+        if (!pts.has(e.pointerId)) return;
+        pts.set(e.pointerId, { x:e.clientX, y:e.clientY });
+        if (pts.size === 2 && mode === 'look' && d0 > 10) {
+          const [a, b] = [...pts.values()]; const d = Math.hypot(a.x-b.x, a.y-b.y);
+          setFov(f0 * d0 / d);
+        }
+      });
+      const up = e => { pts.delete(e.pointerId); d0 = 0; };
+      window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+    })();
 
     // ---------- main loop ----------
     let lastT = performance.now();
@@ -544,7 +548,7 @@
       // The direction the visitor faces right now becomes the fixed start direction.
       mode = 'look';
       mv.removeAttribute('camera-controls');
-      mv.fieldOfView = '65deg';
+      mv.fieldOfView = fov + 'deg';
       offset = gotSensor ? lastHeading : null; sensHH = 0; if (!gotSensor) sensP = 0;
       goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
@@ -568,7 +572,7 @@
       offset = null; gotSensor = false;       // next sensor reading sets the start direction
       mode = 'look';
       mv.removeAttribute('camera-controls');
-      mv.fieldOfView = '65deg';
+      mv.fieldOfView = fov + 'deg';
       sensHH = 0; sensP = 0; goToSpot(); ready = true;
       computeView(); applyView(); dirty = true;
       $('sub').textContent = 'Stage view';
