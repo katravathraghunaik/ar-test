@@ -33,7 +33,7 @@
     #top { position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); left:12px; right:12px;
       display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none; }
     #brand { display:flex; align-items:center; gap:7px; padding:5px 10px 5px 8px; border-radius:14px;
-      border-left:3px solid var(--red); pointer-events:auto; cursor:pointer; text-decoration:none; color:inherit; }
+      pointer-events:auto; cursor:pointer; text-decoration:none; color:inherit; }
     #brand:active { background:rgba(225,29,46,.22); }
     #brand img { height:34px; width:auto; display:block; border-radius:3px; image-rendering:auto; }
     #brand .t { line-height:1.25; }
@@ -140,7 +140,7 @@
   <div id="top">
     <a id="brand" class="glass" href="https://www.annapurnastudios.com/a-m-mocaplab.html" target="_blank" rel="noopener" aria-label="A&M Mocap Lab website">
       <img data-logo alt="A&M Mocap Lab">
-      <div class="t"><b>VIRTUAL STAGE <i>v11</i></b><span id="sub">Stage view</span></div>
+      <div class="t"><b>VIRTUAL STAGE</b><span id="sub">Stage view</span></div>
     </a>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
@@ -476,8 +476,8 @@
         const ah1 = mk('polygon', { fill:'#e11d2e', stroke:'rgba(0,0,0,.75)', 'stroke-width':'1.2' });
         const ah2 = mk('polygon', { fill:'#e11d2e', stroke:'rgba(0,0,0,.75)', 'stroke-width':'1.2' });
         const pill = mk('rect', { width:'112', height:'36', rx:'10', fill:'rgba(11,11,12,.9)', stroke:'#e11d2e', 'stroke-width':'1.6' });
-        const t1 = mk('text', { fill:'#ffffff', 'font-size':'13', 'font-weight':'700' }); t1.textContent = fmtM(d.len);
-        const t2 = mk('text', { fill:'#b9bbc0', 'font-size':'10.5', 'font-weight':'500' }); t2.textContent = d.name + ' · ' + fmtF(d.len);
+        const t1 = mk('text', { fill:'#ffffff', 'font-size':'13', 'font-weight':'400' }); t1.textContent = fmtM(d.len);
+        const t2 = mk('text', { fill:'#ff4757', 'font-size':'12', 'font-weight':'700' }); t2.textContent = d.name + ' · ' + fmtF(d.len);
         svg.appendChild(g); g.style.display = 'none'; dimEls.push({ g, under, line, ah1, ah2, pill, t1, t2 });
       });
       dimsBuilt = true;
@@ -528,8 +528,8 @@
         e.ah2.setAttribute('points', arrow(b.x, b.y, ux, uy));
         const mx = clamp((a.x + b.x) / 2, 62, W - 62), my = clamp((a.y + b.y) / 2, 90, H - 190);   // keep the label on screen
         e.pill.setAttribute('x', mx - 56); e.pill.setAttribute('y', my - 18);
-        e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my - 2);
-        e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my + 12);
+        e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my - 3);
+        e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my + 12);
       });
     }
 
