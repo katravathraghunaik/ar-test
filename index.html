@@ -112,7 +112,7 @@
 </head>
 <body>
   <model-viewer id="mv"
-    src="Mocap_Truss_stage.glb?v=5"
+    src="Mocap_Truss_stage.glb?v=6"
     autoplay
     ar
     ar-modes="webxr scene-viewer quick-look"
@@ -203,7 +203,8 @@
     // ========================
 
     // ===== TRUSS SIZE (metres, measured from the model; used by Measure) =====
-    const STAGE = { w: 24.382, d: 14.326, h: 11.536 };      // width, depth (outer truss edges) and pole height
+    const STAGE = { w: 24.382, d: 14.326, h: 11.536 };      // real truss size in the model (used only to place the lines on the truss)
+    const REAL  = { w: 18.288, d: 12.192, h: 9.144 };       // usable stage: 60 ft wide, 40 ft deep, 30 ft high (the numbers shown)
 
     // ===== SETTINGS =====
     const EYE = 1.6;          // eye height above the floor, metres
@@ -381,11 +382,11 @@
       { name:'Height', a:[HW + OFF, 0, -HD - OFF],    b:[HW + OFF, STAGE.h, -HD - OFF] }   // 7 back-right pole
     ];
     const ORBIT_SET = [0, 2, 4];
-    DIMS.forEach(d => { d.len = Math.hypot(d.a[0]-d.b[0], d.a[1]-d.b[1], d.a[2]-d.b[2]); });
+    DIMS.forEach(d => { d.len = d.name === 'Width' ? REAL.w : d.name === 'Depth' ? REAL.d : REAL.h; });   // shown numbers = your exact measurements
     const fmtM = v => v.toFixed(2) + ' m', fmtF = v => (v * 3.28084).toFixed(1) + ' ft';
     (function buildCard() {
       const row = (l, v) => `<div class="row"><span>${l}</span><b>${fmtM(v)}</b></div>`;
-      $('mbody').innerHTML = row('Width', STAGE.w) + row('Height', STAGE.h) + row('Depth', STAGE.d);
+      $('mbody').innerHTML = row('Width', REAL.w) + row('Height', REAL.h) + row('Depth', REAL.d);
       $('mhead').addEventListener('click', () => $('mcard').classList.toggle('shut'));
     })();
 
@@ -518,7 +519,7 @@
           pz += -Math.cos(hh) * fwd + Math.sin(hh) * side;
           dirty = true;
         }
-        if (dirty && ready) { computeView(); applyView(); dirty = false; updateVals(); }
+        if (dirty && ready && !arActive) { computeView(); applyView(); dirty = false; updateVals(); }
       }
       drawDims();
       ledTick(t);
@@ -647,9 +648,24 @@
       setDims(!dimsOn); bMeas.classList.toggle('on', dimsOn);
       $('mcard').style.display = dimsOn ? 'block' : 'none';
     });
+    // AR: the stage is placed by its centre, with its floor on the real floor (the model's floor is at height 0).
+    let arActive = false;
     bAr.addEventListener('click', () => {
-      if (mv.canActivateAR) mv.activateAR();
-      else toast('AR is not supported on this phone or browser');
+      if (!mv.canActivateAR) { toast('AR is not supported on this phone or browser'); return; }
+      mv.cameraTarget = 'auto auto auto';            // place by the middle of the stage, not by where you stand in stage view
+      mv.jumpCameraToGoal();
+      arActive = true;
+      mv.activateAR();
+    });
+    mv.addEventListener('ar-status', e => {
+      const st = e.detail && e.detail.status;
+      if (st === 'session-started') toast('Move your phone slowly to scan the floor, then tap to place');
+      else if (st === 'object-placed') toast('Stage placed. Walk around slowly for best tracking');
+      else if (st === 'failed') { arActive = false; toast('AR could not start. Check camera permission and lighting'); }
+      else if (st === 'not-presenting') {
+        arActive = false;
+        if (mode === 'look') { computeView(); applyView(); dirty = true; }
+      }
     });
     $('anim').addEventListener('click', () => {
       animOn = !animOn; if (animOn) mv.play(); else mv.pause();
