@@ -715,15 +715,15 @@
     // version), so nothing from Stage view (oversized canvas, roll, scaling) can affect its size or position.
     const frames = n => new Promise(res => { const f = () => (--n <= 0 ? res() : requestAnimationFrame(f)); requestAnimationFrame(f); });
     let flipReset = 0;
-    function resetOrbit(instant) {                        // default view: whole model framed in the centre of the screen
+    function resetOrbit(instant) {                        // default view: same framing as index1's 3D view
       if (mode !== 'orbit') return;
-      const c = mv.getBoundingBoxCenter();
       flipReset ^= 1; const e = flipReset * 0.0002;       // the viewer ignores a value identical to the last one, so differ by a hair
-      mv.fieldOfView = 'auto';
-      mv.cameraTarget = `${c.x + e}m ${c.y + e}m ${c.z + e}m`;
+      mv.cameraTarget = 'auto auto auto';
       mv.cameraOrbit = `${45 + e}deg ${65 + e}deg auto`;
+      mv.fieldOfView = 'auto';
       if (instant) mv.jumpCameraToGoal();
     }
+    // ---------- 3D view: copied from index1 (viewer sits straight in the page, no stage wrapper) ----------
     function toOrbit() {
       if (camOn) stopCam();
       mode = 'orbit';
@@ -731,28 +731,16 @@
       rollDeg = rollGoal = 0; pending = 0; motionOn = false; bMotion.classList.remove('on');
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       sceneEl.style.transform = '';
-      document.body.insertBefore(mv, sceneEl);            // viewer goes straight into the page, as in the first version
-      sceneEl.style.pointerEvents = 'none';               // the (now empty) wrapper must not block touches on the viewer
+      document.body.insertBefore(mv, sceneEl);
+      sceneEl.style.pointerEvents = 'none';
       baseLayout();
       mv.minCameraOrbit = 'auto auto 0.1m'; mv.maxCameraOrbit = 'auto auto 200m';
-      mv.setAttribute('camera-controls', '');             // one finger rotates, two fingers move / pinch zoom
-      const frame = () => {
-        if (mode !== 'orbit') return;
-        mv.cameraTarget = 'auto auto auto';
-        mv.cameraOrbit = '45deg 65deg auto';
-        mv.fieldOfView = 'auto';
-        mv.jumpCameraToGoal();
-      };
-      frame();
-      frames(2).then(frame);                              // moving the viewer restarts it: frame again once it is running
-      setTimeout(frame, 350);
-      try {                                               // hide the viewer's small pan dot
-        if (mv.shadowRoot && !mv.shadowRoot.querySelector('#nodot')) {
-          const st = document.createElement('style'); st.id = 'nodot';
-          st.textContent = '.pan-target{display:none !important}'; mv.shadowRoot.appendChild(st);
-        }
-      } catch (e) {}
-      $('sub').textContent = '3D view · double-tap to reset';
+      mv.setAttribute('camera-controls', '');
+      mv.cameraTarget = 'auto auto auto';
+      mv.cameraOrbit = '45deg 65deg auto';
+      mv.fieldOfView = 'auto';
+      mv.jumpCameraToGoal();
+      $('sub').textContent = '3D view'; toast('Drag to rotate · pinch to zoom');
       b3d.classList.add('on'); bMotion.classList.add('dim'); bJoy.classList.add('dim');
     }
     // double-tap / double-click on the model in 3D view -> back to the framed default view
