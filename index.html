@@ -224,7 +224,9 @@
     const STEP_THRESH = 0.7;  // lower = more sensitive step detection
     const WALK_RATE = 3;      // how quickly a step is applied, metres per second
     const R = 1;              // keep as is
+    const DIM_SCALE_3D = 0.55; // size of the measurement labels/lines in the 3D view only (1 = same as stage view, lower = smaller)
     const FOV_START = 40;     // starting field of view in degrees (higher = wider)
+    const AR_FOV = FOV_START; // field of view in AR mode (same as the stage view; change this number to make AR wider/narrower on its own)
     const FOV_MIN = 30, FOV_MAX = 110;   // pinch limits
     // ====================
 
@@ -498,8 +500,8 @@
       if (on && !dimsBuilt) buildDims();
       if (!on) { mv.querySelectorAll('.hs').forEach(n => n.remove()); svg.innerHTML = ''; dimEls = []; dimsBuilt = false; }
     }
-    function arrow(x, y, ux, uy) {            // arrow head at (x,y) pointing along (ux,uy)
-      const s = 11, w = 5, bx = x - ux * s, by = y - uy * s;
+    function arrow(x, y, ux, uy, k) {         // arrow head at (x,y) pointing along (ux,uy); k = size scale
+      const s = 11 * k, w = 5 * k, bx = x - ux * s, by = y - uy * s;
       return `${x},${y} ${bx - uy * w},${by + ux * w} ${bx + uy * w},${by - ux * w}`;
     }
     function inFront(p) {
@@ -522,12 +524,13 @@
       if (!dimsOn || !dimsBuilt) { svg.style.display = 'none'; return; }
       svg.style.display = 'block';
       const act = activeDims(), W = svg.clientWidth || innerWidth, H = svg.clientHeight || innerHeight;
+      const K = mode === 'orbit' ? DIM_SCALE_3D : 1;               // 3D view: smaller labels so the model stays visible
       dimEls.forEach((e, i) => { if (!act.includes(i)) e.g.style.display = 'none'; });
       act.forEach(i => {
         const d = DIMS[i], e = dimEls[i];
         const ha = mv.queryHotspot('hotspot-d' + i + 'a'), hb = mv.queryHotspot('hotspot-d' + i + 'b');
         let show = !!(ha && hb), a, b, L = 0;
-        if (show) { a = ha.canvasPosition; b = hb.canvasPosition; L = Math.hypot(b.x - a.x, b.y - a.y); show = L > 44; }
+        if (show) { a = ha.canvasPosition; b = hb.canvasPosition; L = Math.hypot(b.x - a.x, b.y - a.y); show = L > 44 * K; }
         if (!show) { e.g.style.display = 'none'; return; }
         e.g.style.display = '';
         const ux = (b.x - a.x) / L, uy = (b.y - a.y) / L;
@@ -535,12 +538,16 @@
           el.setAttribute('x1', a.x + ux * 6); el.setAttribute('y1', a.y + uy * 6);
           el.setAttribute('x2', b.x - ux * 6); el.setAttribute('y2', b.y - uy * 6);
         }
-        e.ah1.setAttribute('points', arrow(a.x, a.y, -ux, -uy));
-        e.ah2.setAttribute('points', arrow(b.x, b.y, ux, uy));
-        const mx = clamp((a.x + b.x) / 2, 62, W - 62), my = clamp((a.y + b.y) / 2, 90, H - 190);   // keep the label on screen
-        e.pill.setAttribute('x', mx - 56); e.pill.setAttribute('y', my - 18);
-        e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my - 3);
-        e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my + 12);
+        e.under.setAttribute('stroke-width', 6 * K); e.line.setAttribute('stroke-width', 3 * K);
+        e.ah1.setAttribute('points', arrow(a.x, a.y, -ux, -uy, K));
+        e.ah2.setAttribute('points', arrow(b.x, b.y, ux, uy, K));
+        const mx = clamp((a.x + b.x) / 2, 62 * K, W - 62 * K), my = clamp((a.y + b.y) / 2, 90, H - 190);   // keep the label on screen
+        e.pill.setAttribute('width', 112 * K); e.pill.setAttribute('height', 36 * K); e.pill.setAttribute('rx', 10 * K);
+        e.pill.setAttribute('stroke-width', 1.6 * K);
+        e.pill.setAttribute('x', mx - 56 * K); e.pill.setAttribute('y', my - 18 * K);
+        e.t2.setAttribute('font-size', 12 * K); e.t1.setAttribute('font-size', 13 * K);
+        e.t2.setAttribute('x', mx); e.t2.setAttribute('y', my - 3 * K);
+        e.t1.setAttribute('x', mx); e.t1.setAttribute('y', my + 12 * K);
       });
     }
 
@@ -810,7 +817,7 @@
     const camVideo = $('cam');
     function camFov() {                       // AR uses the same field of view as the stage view (FOV_START), so both look identical
       const portrait = window.innerHeight >= window.innerWidth;
-      const v = portrait ? FOV_START : 2 * Math.atan(Math.tan(FOV_START * Math.PI / 360) * 0.75) * 180 / Math.PI;   // same field of view as the stage view (FOV_START)
+      const v = portrait ? AR_FOV : 2 * Math.atan(Math.tan(AR_FOV * Math.PI / 360) * 0.75) * 180 / Math.PI;   // same field of view as the stage view (FOV_START)
       return v;
     }
     function applyCamFov() { if (camOn) { fov = camFov(); setMvFov(); dirty = true; } }
