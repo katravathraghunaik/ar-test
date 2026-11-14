@@ -281,6 +281,11 @@
       clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove('show'), 2600);
     }
 
+    // model-viewer silently ignores a property set to the same value it already has, even when its real camera was reset
+    // (which is what happens after a tab switch). Setting a different value first, in the same tick, makes it always apply.
+    function force(prop, val) { mv[prop] = val + ' '; mv[prop] = val; }
+    const ctl = () => { try { return mv[Object.getOwnPropertySymbols(mv).find(k => k.description === 'controls')]; } catch (e) { return null; } };
+
     // ---------- camera ----------
     function curYaw() { return ((view.hh * 180 / Math.PI) % 360 + 360) % 360; }
     function computeView() {
@@ -295,8 +300,8 @@
     }
     function applyView() {
       if (typeof mv.jumpCameraToGoal !== 'function') return;
-      mv.cameraTarget = `${px + view.dx*R}m ${eyeY() + view.dy*R}m ${pz + view.dz*R}m`;
-      mv.cameraOrbit = `${view.theta}deg ${view.phi}deg ${R}m`;
+      force('cameraTarget', `${px + view.dx*R}m ${eyeY() + view.dy*R}m ${pz + view.dz*R}m`);
+      force('cameraOrbit', `${view.theta}deg ${view.phi}deg ${R}m`);
       mv.jumpCameraToGoal();
     }
     function goToSpot() {                    // start point = the origin (stage centre)
@@ -339,7 +344,7 @@
       // the picture is enlarged by sceneS, so the viewer's field of view is widened by the same factor:
       // what you see on screen keeps exactly the zoom that is set (no zoom jump, no resizing of the viewer)
       const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneS) * 180 / Math.PI;
-      mv.fieldOfView = Math.min(f, 149).toFixed(2) + 'deg';
+      force('fieldOfView', Math.min(f, 149).toFixed(2) + 'deg');
     }
     function baseLayout() {                                      // fixed size, only changes when the screen size changes
       const W = innerWidth, H = innerHeight;
@@ -655,7 +660,7 @@
         const o = mv.getCameraOrbit(), D = 180 / Math.PI;
         if (Math.abs(mv.getFieldOfView() - narrowToVert(want)) > 0.8 || Math.abs(wrap(o.theta - view.theta / D)) * D > 1.5 ||
             Math.abs(o.phi * D - view.phi) > 1.5 || Math.abs(o.radius - R) > 0.05) {
-          setMvFov(); computeView(); applyView(); dirty = true;
+          setMvFov(); computeView(); applyView(); dirty = true; verifyFov(want);
         }
       } catch (e) {}
     }
@@ -745,9 +750,9 @@
     }
     // The 3D view's starting camera (same size, position, rotation every time).
     function resetOrbit() {
-      mv.cameraTarget = 'auto auto auto';
-      mv.cameraOrbit = '45deg 65deg auto';
-      mv.fieldOfView = 'auto';
+      force('cameraTarget', 'auto auto auto');
+      force('cameraOrbit', '45deg 65deg auto');
+      force('fieldOfView', 'auto');
       mv.jumpCameraToGoal();
     }
     // Double-tap / double-click in the 3D view: model-viewer's built-in reset goes back to the HTML attributes
@@ -854,17 +859,28 @@
       recT = t;
       try { goodOrbit = { o: mv.getCameraOrbit(), t: mv.getCameraTarget(), f: vertToNarrow(mv.getFieldOfView()) }; } catch (e) {}
     }
+    function verifyFov(wantNarrow) {                  // next frames: if the viewer's real field of view is still wrong, set it directly
+      const check = () => {
+        try {
+          const want = narrowToVert(wantNarrow), c = ctl();
+          if (c && Math.abs(mv.getFieldOfView() - want) > 0.8) { c.setFieldOfView(want); c.jumpToGoal(); }
+        } catch (e) {}
+      };
+      requestAnimationFrame(() => requestAnimationFrame(check));
+    }
     function applyGood() {                            // put the right camera back, whichever view we are in
       if (!ready) return;
       if (mode === 'look') {
         baseLayout(); rollDeg = rollGoal; layoutScene();
         computeView(); applyView(); dirty = true;
+        verifyFov(Math.min(2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneS) * 180 / Math.PI, 149));
       } else if (goodOrbit) {
         const s = goodOrbit;
-        mv.cameraTarget = s.t.x + 'm ' + s.t.y + 'm ' + s.t.z + 'm';
-        mv.cameraOrbit = s.o.theta + 'rad ' + s.o.phi + 'rad ' + s.o.radius + 'm';
-        mv.fieldOfView = s.f + 'deg';
+        force('cameraTarget', s.t.x + 'm ' + s.t.y + 'm ' + s.t.z + 'm');
+        force('cameraOrbit', s.o.theta + 'rad ' + s.o.phi + 'rad ' + s.o.radius + 'm');
+        force('fieldOfView', s.f + 'deg');
         mv.jumpCameraToGoal();
+        verifyFov(s.f);
       }
     }
     function goAway() {
@@ -878,12 +894,12 @@
       if (!wasHidden) return;
       wasHidden = false;
       applyGood();
-      settleUntil = performance.now() + 500;          // the main loop re-applies the camera every frame during this time
+      settleUntil = performance.now() + 800;          // the main loop re-applies the camera every frame during this time
       clearTimeout(revealTimer);
       revealTimer = setTimeout(() => {
         applyGood();
         sceneEl.style.transition = 'opacity .2s ease'; sceneEl.style.opacity = '1';
-      }, 520);
+      }, 820);
     }
     document.addEventListener('visibilitychange', () => { document.hidden ? goAway() : onBack(); });
     window.addEventListener('pagehide', goAway);
