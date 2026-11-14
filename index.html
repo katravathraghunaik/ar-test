@@ -121,7 +121,7 @@
   <video id="cam" playsinline muted autoplay></video>
   <div id="scene">
   <model-viewer id="mv"
-    src="Mocap_Truss_stage.glb?v=8"
+    src="Mocap_Truss_stage.glb?v=9"
     autoplay
     min-camera-orbit="auto 0deg 0.1m"
     max-camera-orbit="auto 180deg 200m"
@@ -229,9 +229,10 @@
     // ====================
 
     // ===== LOGO BOARDS =====
-    // The 24 boards in the model show a placeholder until you put your own logo files next to index.html, named:
+    // Optional override (USE_LOGO_FILES = true): put your own logo files next to index.html, named:
     //   logo_annapurna.png   logo_mihira.png   logo_animatrik.png      (.png .jpg .jpeg .webp .svg all work)
     // Each logo is fitted onto a plate of this colour (use '#ffffff' for dark logos, '#111111' for white logos).
+    const USE_LOGO_FILES = false;          // the 3 logos are already built into the model; set true only to override them with files
     const LOGO_PLATE = '#ffffff';
     const LOGO_FILES = { Annapurna: 'logo_annapurna', Mihira: 'logo_mihira', Animatrik: 'logo_animatrik' };
     // =======================
@@ -634,7 +635,27 @@
       }
       drawDims();
       ledTick(t);
+      guardView(t);
       requestAnimationFrame(tick);
+    }
+    // Safety net: if the viewer ever drops our camera (zoom / field of view / position), put it straight back.
+    // Checked twice a second in the stage view only; normal movement and pinch never trigger it.
+    // the viewer takes the field of view along the NARROWER side of the screen, but reports it along the height:
+    const asp = () => (mv.clientWidth || 1) / (mv.clientHeight || 1);
+    const narrowToVert = n => asp() < 1 ? 2 * Math.atan(Math.tan(n * Math.PI / 360) / asp()) * 180 / Math.PI : n;
+    const vertToNarrow = v => asp() < 1 ? 2 * Math.atan(Math.tan(v * Math.PI / 360) * asp()) * 180 / Math.PI : v;
+    let guardT = 0;
+    function guardView(t) {
+      if (t - guardT < 500 || !ready || mode !== 'look' || document.hidden || typeof mv.getFieldOfView !== 'function') return;
+      guardT = t;
+      try {
+        const want = Math.min(2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneS) * 180 / Math.PI, 149);
+        const o = mv.getCameraOrbit(), D = 180 / Math.PI;
+        if (Math.abs(mv.getFieldOfView() - narrowToVert(want)) > 0.8 || Math.abs(wrap(o.theta - view.theta / D)) * D > 1.5 ||
+            Math.abs(o.phi * D - view.phi) > 1.5 || Math.abs(o.radius - R) > 0.05) {
+          setMvFov(); computeView(); applyView(); dirty = true;
+        }
+      } catch (e) {}
     }
     requestAnimationFrame(tick);
 
@@ -830,7 +851,26 @@
       layoutScene();
       computeView(); applyView(); dirty = true;       // re-sets field of view, camera position and direction
     }
-    function onBack() { resync(); setTimeout(resync, 150); setTimeout(resync, 600); }
+    let orbitSaved = null;
+    function saveOrbit() {
+      if (mode !== 'orbit' || typeof mv.getCameraOrbit !== 'function') return;
+      try { orbitSaved = { o: mv.getCameraOrbit(), t: mv.getCameraTarget(), f: vertToNarrow(mv.getFieldOfView()) }; } catch (e) {}
+    }
+    function restoreOrbit() {
+      if (mode !== 'orbit' || !orbitSaved) return;
+      const s = orbitSaved;
+      mv.cameraTarget = s.t.x + 'm ' + s.t.y + 'm ' + s.t.z + 'm';
+      mv.cameraOrbit = s.o.theta + 'rad ' + s.o.phi + 'rad ' + s.o.radius + 'm';
+      mv.fieldOfView = s.f + 'deg';
+      mv.jumpCameraToGoal();
+    }
+    function onBack() {
+      resync(); restoreOrbit();
+      setTimeout(() => { resync(); restoreOrbit(); }, 150);
+      setTimeout(() => { resync(); restoreOrbit(); orbitSaved = null; }, 600);   // saved view is used once, then forgotten
+    }
+    document.addEventListener('visibilitychange', () => { if (document.hidden) saveOrbit(); });
+    window.addEventListener('pagehide', saveOrbit);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) onBack(); });
     window.addEventListener('pageshow', onBack);
     window.addEventListener('focus', onBack);
@@ -850,7 +890,7 @@
     mv.addEventListener('load', () => {
       const c = mv.getBoundingBoxCenter(), d = mv.getDimensions();
       cx = c.x; cz = c.z; floorY = c.y - d.y / 2;
-      ledInit(); loadLogos();
+      ledInit(); if (USE_LOGO_FILES) loadLogos();
       if (mv.availableAnimations && mv.availableAnimations.length > 0) $('anim').style.display = 'block';
       $('loading').style.display = 'none';
       if (needsPerm) { $('start').style.display = 'flex'; }
