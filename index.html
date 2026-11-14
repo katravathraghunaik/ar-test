@@ -633,9 +633,11 @@
         if (rollDeg > 180) rollDeg -= 360; else if (rollDeg < -180) rollDeg += 360;
         layoutScene();
       }
+      if (t < settleUntil) applyGood();
+      recordOrbit(t);
       drawDims();
       ledTick(t);
-      guardView(t);
+      if (t >= settleUntil) guardView(t);
       requestAnimationFrame(tick);
     }
     // Safety net: if the viewer ever drops our camera (zoom / field of view / position), put it straight back.
@@ -765,7 +767,7 @@
     })();
     function toOrbit() {
       if (camOn) stopCam();
-      mode = 'orbit';
+      mode = 'orbit'; goodOrbit = null;
       stopSensors();
       $('jpanel').style.display = 'none'; bJoy.classList.remove('on');
       mv.setAttribute('camera-controls', '');
@@ -842,38 +844,50 @@
     baseLayout();
 
     // ---------- coming back to the page (tab switch / app switch / screen unlock) ----------
-    // The browser can resize the page and the viewer can drop its camera settings while the tab is hidden.
-    // On return we re-apply the exact stage view (size, field of view, position, direction) so nothing stays zoomed or skewed.
-    function resync() {
-      if (!ready || mode !== 'look') return;
-      baseLayout();                                   // correct size + roll scale for the current screen
-      rollDeg = rollGoal;                             // snap the roll to the phone's real roll (no leftover tilt)
-      layoutScene();
-      computeView(); applyView(); dirty = true;       // re-sets field of view, camera position and direction
-    }
-    let orbitSaved = null;
-    function saveOrbit() {
+    // While the page is hidden the browser can resize it and model-viewer can lose its camera, so on return it shows zoomed in.
+    // Fix: remember the last good camera, hide the picture while away, force the exact camera back for a short moment
+    // (before anything is painted), then fade the picture in. No visible jump.
+    let goodOrbit = null, recT = 0, settleUntil = 0, wasHidden = false, revealTimer = 0;
+    function recordOrbit(t, force) {                         // last known-good 3D camera (only while visible and settled)
       if (mode !== 'orbit' || typeof mv.getCameraOrbit !== 'function') return;
-      try { orbitSaved = { o: mv.getCameraOrbit(), t: mv.getCameraTarget(), f: vertToNarrow(mv.getFieldOfView()) }; } catch (e) {}
+      if (!force && (document.hidden || t < settleUntil || t - recT < 200)) return;
+      recT = t;
+      try { goodOrbit = { o: mv.getCameraOrbit(), t: mv.getCameraTarget(), f: vertToNarrow(mv.getFieldOfView()) }; } catch (e) {}
     }
-    function restoreOrbit() {
-      if (mode !== 'orbit' || !orbitSaved) return;
-      const s = orbitSaved;
-      mv.cameraTarget = s.t.x + 'm ' + s.t.y + 'm ' + s.t.z + 'm';
-      mv.cameraOrbit = s.o.theta + 'rad ' + s.o.phi + 'rad ' + s.o.radius + 'm';
-      mv.fieldOfView = s.f + 'deg';
-      mv.jumpCameraToGoal();
+    function applyGood() {                            // put the right camera back, whichever view we are in
+      if (!ready) return;
+      if (mode === 'look') {
+        baseLayout(); rollDeg = rollGoal; layoutScene();
+        computeView(); applyView(); dirty = true;
+      } else if (goodOrbit) {
+        const s = goodOrbit;
+        mv.cameraTarget = s.t.x + 'm ' + s.t.y + 'm ' + s.t.z + 'm';
+        mv.cameraOrbit = s.o.theta + 'rad ' + s.o.phi + 'rad ' + s.o.radius + 'm';
+        mv.fieldOfView = s.f + 'deg';
+        mv.jumpCameraToGoal();
+      }
+    }
+    function goAway() {
+      if (!ready) return;
+      if (!wasHidden && !goodOrbit) recordOrbit(0, true);          // keep the camera we had a moment ago (not whatever the browser did)
+      wasHidden = true;
+      clearTimeout(revealTimer);
+      sceneEl.style.transition = 'none'; sceneEl.style.opacity = '0';
     }
     function onBack() {
-      resync(); restoreOrbit();
-      setTimeout(() => { resync(); restoreOrbit(); }, 150);
-      setTimeout(() => { resync(); restoreOrbit(); orbitSaved = null; }, 600);   // saved view is used once, then forgotten
+      if (!wasHidden) return;
+      wasHidden = false;
+      applyGood();
+      settleUntil = performance.now() + 500;          // the main loop re-applies the camera every frame during this time
+      clearTimeout(revealTimer);
+      revealTimer = setTimeout(() => {
+        applyGood();
+        sceneEl.style.transition = 'opacity .2s ease'; sceneEl.style.opacity = '1';
+      }, 520);
     }
-    document.addEventListener('visibilitychange', () => { if (document.hidden) saveOrbit(); });
-    window.addEventListener('pagehide', saveOrbit);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) onBack(); });
+    document.addEventListener('visibilitychange', () => { document.hidden ? goAway() : onBack(); });
+    window.addEventListener('pagehide', goAway);
     window.addEventListener('pageshow', onBack);
-    window.addEventListener('focus', onBack);
 
     // ---------- start-up ----------
     mv.addEventListener('progress', e => {
