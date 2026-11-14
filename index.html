@@ -808,9 +808,9 @@
     });
     // ---------- AR: live camera behind the stage view ----------
     const camVideo = $('cam');
-    function camFov() {                       // vertical field of view of a typical phone camera, kept matched to the video
+    function camFov() {                       // AR uses the same field of view as the stage view (FOV_START), so both look identical
       const portrait = window.innerHeight >= window.innerWidth;
-      const v = portrait ? 65 : 2 * Math.atan(Math.tan(32.5 * Math.PI / 180) * 0.75) * 180 / Math.PI;
+      const v = portrait ? FOV_START : 2 * Math.atan(Math.tan(FOV_START * Math.PI / 360) * 0.75) * 180 / Math.PI;   // same field of view as the stage view (FOV_START)
       return v;
     }
     function applyCamFov() { if (camOn) { fov = camFov(); setMvFov(); dirty = true; } }
