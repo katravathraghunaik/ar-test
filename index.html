@@ -13,13 +13,13 @@
     :root { --red:#e11d2e; --red-soft:rgba(225,29,46,.24); --ink:#0b0b0c; --muted:#9b9da3;
             --glass:rgba(11,11,12,.68); --line:rgba(255,255,255,.10); }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-    html, body { margin:0; height:100%; overflow:hidden; touch-action:none; color:#f2f2f3;
+    html, body { margin:0; height:100%; overflow:hidden; position:fixed; inset:0; width:100%; touch-action:none; color:#f2f2f3;
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
       background:radial-gradient(circle at 50% 30%, #c3c6ca 0%, #80848a 55%, #54585e 100%); }
     #cam { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; background:#000; }
     html.cam #cam { display:block; }
     html.cam body { background:#000; }
-    #scene { position:absolute; left:0; top:0; width:100%; height:100%; transform-origin:50% 50%; }
+    #scene { position:fixed; left:0; top:0; width:100%; height:100%; transform-origin:50% 50%; }
     model-viewer { position:absolute; inset:0; width:100%; height:100%;
       background:transparent; --poster-color:transparent; }
     svg.i { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.8;
@@ -336,7 +336,7 @@
     const S0 = 1;                                                // viewer keeps exactly the screen size (never resized)
     let sceneS = 1;                                              // scale that keeps the rotated picture covering the whole screen
     function coverScale(a) {
-      const W = innerWidth || 1, H = innerHeight || 1, t = Math.abs(a) * Math.PI / 180, c = Math.abs(Math.cos(t)), n = Math.abs(Math.sin(t));
+      const W = document.documentElement.clientWidth || innerWidth || 1, H = document.documentElement.clientHeight || innerHeight || 1, t = Math.abs(a) * Math.PI / 180, c = Math.abs(Math.cos(t)), n = Math.abs(Math.sin(t));
       return Math.max(c + (H / W) * n, c + (W / H) * n) * (1 + 0.003 * Math.min(1, Math.abs(a) / 2));
     }
     function setMvFov() {
@@ -346,10 +346,7 @@
       const f = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * sceneS) * 180 / Math.PI;
       force('fieldOfView', Math.min(f, 149).toFixed(2) + 'deg');
     }
-    function baseLayout() {                                      // fixed size, only changes when the screen size changes
-      const W = innerWidth, H = innerHeight;
-      sceneEl.style.width = (W * S0) + 'px'; sceneEl.style.height = (H * S0) + 'px';
-      sceneEl.style.left = (W * (1 - S0) / 2) + 'px'; sceneEl.style.top = (H * (1 - S0) / 2) + 'px';
+    function baseLayout() {                                      // size comes from CSS (fixed, 100%); only the roll scale is recalculated
       layoutScene();
     }
     function layoutScene() {
