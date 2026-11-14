@@ -115,45 +115,13 @@
     #lfill { height:100%; width:0; background:var(--red); transition:width .25s; }
     #start button { padding:15px 38px; font-size:15px; font-weight:700; letter-spacing:.08em; border:0;
       border-radius:30px; background:var(--red); color:#fff; box-shadow:0 8px 24px rgba(225,29,46,.35); }
-    /* info button + name tags + equipment card */
-    #tr { align-items:flex-start; }
-    #tcol { display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
-    #infoBtn { width:44px; }
-    #infoBtn svg.i { width:22px; height:22px; }
-    #infoBtn:active, #infoBtn.on { background:var(--red); color:var(--ink); }
-    #tags { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; display:none; }
-    #tags text { font-family:inherit; }
-    #icard { position:absolute; right:12px; top:calc(env(safe-area-inset-top,0px) + 118px); width:238px;
-      padding:11px 14px 6px; border-radius:16px; font-size:12px; display:none; border-right:3px solid var(--red);
-      max-height:calc(100% - 300px); overflow-y:auto; touch-action:pan-y; }
-    #icard h4 { margin:0 0 4px; font-size:10px; letter-spacing:.18em; color:var(--red); font-weight:700;
-      display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
-    #icard h4::after { content:'▾'; font-size:12px; }
-    #icard.shut h4::after { content:'▸'; }
-    #icard.shut #ibody { display:none; }
-    #icard .it { display:flex; gap:9px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.07); }
-    #icard .it:last-child { border-bottom:0; }
-    #icard .dot { flex:none; width:9px; height:9px; border-radius:50%; margin-top:4px; background:var(--c);
-      box-shadow:0 0 0 2px rgba(255,255,255,.12); }
-    #icard .nm { font-weight:700; color:#f4f4f5; font-size:12.5px; line-height:1.25; }
-    #icard .nm i { font-style:normal; color:var(--c); margin-left:6px; }
-    #icard .ds { color:var(--muted); font-size:11px; line-height:1.4; margin-top:2px; }
-
-    /* contact line (stage view, bottom) */
-    #contact { position:absolute; left:50%; transform:translateX(-50%);
-      bottom:calc(env(safe-area-inset-bottom,0px) + 92px); width:calc(100% - 24px); max-width:420px;
-      padding:8px 12px; border-radius:16px; text-align:center; font-size:14px; line-height:1.45;
-      display:flex; flex-direction:column; gap:1px; color:#e9e9eb; }
-    #contact a { color:#ff4757; text-decoration:none; font-weight:600; pointer-events:auto; }
-    html.orbit #contact, html.joy #contact { display:none; }
-    html:not(.orbit):not(.joy) #toast { bottom:calc(env(safe-area-inset-bottom,0px) + 158px); }
   </style>
 </head>
 <body>
   <video id="cam" playsinline muted autoplay></video>
   <div id="scene">
   <model-viewer id="mv"
-    src="Mocap_Truss_stage.glb?v=14"
+    src="Mocap_Truss_stage.glb?v=13"
     autoplay
     min-camera-orbit="auto 0deg 0.1m"
     max-camera-orbit="auto 180deg 200m"
@@ -167,7 +135,6 @@
   </model-viewer>
 
   <svg id="dims"></svg>
-  <svg id="tags"></svg>
   </div>
 
   <div id="top">
@@ -177,22 +144,13 @@
     </a>
     <div id="tr">
       <button id="anim" class="glass">Animation: On</button>
-      <div id="tcol">
-        <button id="pivotBtn" class="tbtn" aria-label="Go to origin">
-          <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4.2M12 17.3v4.2M2.5 12h4.2M17.3 12h4.2"/></svg>
-        </button>
-        <button id="infoBtn" class="tbtn" aria-label="Show equipment names">
-          <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.6"/><circle cx="12" cy="7.6" r=".7" fill="currentColor"/></svg>
-        </button>
-      </div>
+      <button id="pivotBtn" class="tbtn" aria-label="Go to origin">
+        <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4.2M12 17.3v4.2M2.5 12h4.2M17.3 12h4.2"/></svg>
+      </button>
     </div>
   </div>
 
   <div id="mcard" class="glass"><h4 id="mhead">TRUSS DIMENSIONS</h4><div id="mbody"></div></div>
-
-  <div id="icard" class="glass"><h4 id="ihead">ON THE STAGE</h4><div id="ibody"></div></div>
-
-  <div id="contact" class="glass"><span id="cAddr"></span><a id="cMail"></a></div>
 
   <div id="toast" class="glass"></div>
 
@@ -272,38 +230,6 @@
     const FOV_MIN = 30, FOV_MAX = 110;   // pinch limits
     // ====================
 
-
-    // ===== CONTACT (shown at the bottom of the stage view) =====
-    const CONTACT = {
-      address: 'Your studio address here',      // <- put your full address here
-      email:   'name@yourdomain.com'            // <- put your contact email here
-    };
-    // ===========================================================
-
-    // ===== INFO BUTTON: names on the equipment =====
-    // pts = [x, y, z] in metres from the stage centre / floor (each point is one real item in the model).
-    // K = how many tags of that kind to show at once in the stage view (the nearest ones, so the screen stays clean); K3d = same, in the 3D view.
-    const INFO = {
-      witness:  { color:'#ffb020', K:5, label: i => 'Witness Cam ' + (i + 1),
-                  pts:[[0.5,9.2,7.01],[-11.32,9.2,-7.02],[8.18,4.32,-7.02],[11.94,4.32,1.22],[-10.72,4.32,7.01]] },
-      valk:     { color:'#38bdf8', K:3, K3d:2, label: () => 'Valkyrie 26',
-                  pts:[[-6.95,9.31,7.01],[-6.95,9.31,-7.01],[-2.2,9.31,7.01],[-2.2,9.31,-7.01],[2.0,9.31,7.01],[2.0,9.31,-7.01],[6.75,9.31,7.01],[6.75,9.31,-7.01],[-12.14,9.31,-4.3],[11.94,9.31,-4.3],[-12.14,9.31,0.0],[11.94,9.31,0.0],[-12.14,9.31,4.3],[11.94,9.31,4.3],[-4.12,9.31,-4.4],[3.92,9.31,-4.4],[-4.12,9.31,0.0],[3.92,9.31,0.0],[-4.12,9.31,4.4],[3.92,9.31,4.4],[-6.95,4.43,7.01],[-6.95,4.43,-7.01],[-2.2,4.43,7.01],[-2.2,4.43,-7.01],[2.0,4.43,7.01],[2.0,4.43,-7.01],[6.75,4.43,7.01],[6.75,4.43,-7.01],[-12.14,4.43,-4.3],[11.94,4.43,-4.3],[-12.14,4.43,0.0],[11.94,4.43,0.0],[-12.14,4.43,4.3],[11.94,4.43,4.3],[-9.26,6.06,-6.63],[-9.26,8.06,-6.63],[-9.26,6.06,6.63],[-9.26,8.06,6.63],[-0.1,3.66,-6.36],[-0.1,6.06,-6.36],[-0.1,8.06,-6.36],[-0.1,3.66,6.36],[-0.1,6.06,6.36],[-0.1,8.06,6.36],[9.05,6.06,-6.63],[9.05,8.06,-6.63],[9.05,6.06,6.63],[9.05,8.06,6.63],[-11.58,7.39,-6.69],[-11.58,7.39,6.68],[11.37,7.39,-6.69],[11.37,7.39,6.68]] },
-      vero:     { color:'#34d399', K:3, K3d:2, label: () => 'Vero 4.2',          // bottom cameras only
-                  pts:[[-9.26,1.86,-6.63],[-9.26,3.66,-6.63],[-9.26,1.86,6.63],[-9.26,3.66,6.63],[-0.1,1.86,-6.36],[-0.1,1.86,6.36],[9.05,1.86,-6.63],[9.05,3.66,-6.63],[9.05,1.86,6.63],[9.05,3.66,6.63]] },
-      trussUp:  { color:'#ff4757', K:1, label: () => 'Floating Truss · Upper',  sub:'moves up / down', arrows:true,
-                  pts:[[-6.1,9.8,7.01],[5.9,9.8,7.01],[-6.1,9.8,-7.01],[5.9,9.8,-7.01],[-12.14,9.8,3.5],[-12.14,9.8,-3.5],[11.94,9.8,3.5],[11.94,9.8,-3.5]] },
-      trussLow: { color:'#ff4757', K:1, label: () => 'Floating Truss · Bottom', sub:'moves up / down', arrows:true,
-                  pts:[[-6.1,4.9,7.01],[5.9,4.9,7.01],[-6.1,4.9,-7.01],[5.9,4.9,-7.01],[-12.14,4.9,3.5],[-12.14,4.9,-3.5],[11.94,4.9,3.5],[11.94,4.9,-3.5]] }
-    };
-    // the card under the info button
-    const INFO_ROWS = [
-      { c:'#ffb020', name:'Witness Cameras', n:'×5',  ds:'Blackmagic' },
-      { c:'#38bdf8', name:'Valkyrie 26',     n:'×56', ds:'Motion-capture cameras' },
-      { c:'#34d399', name:'Vero 4.2',        n:'×10', ds:'Bottom cameras only' },
-      { c:'#ff4757', name:'Floating Truss',  n:'',    ds:'The upper and bottom truss move up and down as required. Specially designed for stunts.' }
-    ];
-    // ===============================================
-
     // ===== LOGO BOARDS =====
     // Optional override (USE_LOGO_FILES = true): put your own logo files next to index.html, named:
     //   logo_annapurna.png   logo_mihira.png   logo_animatrik.png      (.png .jpg .jpeg .webp .svg all work)
@@ -339,7 +265,7 @@
     let view = { dx:0, dy:0, dz:-1, theta:0, phi:90, hh:0 };
     let sensHH = 0, sensP = 0, offset = null, lastHeading = 0, gotSensor = false;
     let yawOff = 0, pitchOff = 0, dirty = true, listening = false, ready = false;
-    let motionOn = false, dimsOn = false, animOn = true, infoOn = false;
+    let motionOn = false, dimsOn = false, animOn = true;
     let rawP = 0;
     let pending = 0, lastStep = 0, base = 9.8, prevHp = 0, freezeUntil = 0;
 
@@ -625,138 +551,6 @@
       });
     }
 
-    // ---------- info: names on the equipment ----------
-    const tagSvg = $('tags');
-    let tagEls = [], tagsBuilt = false;
-    (function buildCard() {
-      $('ibody').innerHTML = INFO_ROWS.map(r =>
-        `<div class="it" style="--c:${r.c}"><span class="dot"></span><div><div class="nm">${r.name}${r.n ? '<i>' + r.n + '</i>' : ''}</div><div class="ds">${r.ds}</div></div></div>`).join('');
-      $('ihead').addEventListener('click', () => $('icard').classList.toggle('shut'));
-      $('cAddr').textContent = CONTACT.address;
-      $('cMail').textContent = CONTACT.email; $('cMail').href = 'mailto:' + CONTACT.email;
-    })();
-    function buildTags() {
-      mv.querySelectorAll('.ths').forEach(n => n.remove());
-      tagSvg.innerHTML = ''; tagEls = [];
-      Object.keys(INFO).forEach(key => {
-        const G = INFO[key];
-        G.pts.forEach((p, i) => {
-          const id = 't-' + key + i, a = [cx + p[0], floorY + p[1], cz + p[2]];
-          const b = document.createElement('button');
-          b.className = 'ths'; b.slot = 'hotspot-' + id;
-          b.setAttribute('data-position', a.map(v => v + 'm').join(' '));
-          b.setAttribute('data-normal', '0 1 0');
-          b.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;border:0;padding:0;';
-          mv.appendChild(b);
-          const g = document.createElementNS(NS, 'g'); g.style.display = 'none';
-          const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); g.appendChild(e); return e; };
-          const line = mk('line', { stroke:G.color, 'stroke-width':'1.6', 'stroke-linecap':'round' });
-          const dot  = mk('circle', { r:'4.5', fill:G.color, stroke:'rgba(0,0,0,.8)', 'stroke-width':'1.6' });
-          const pill = mk('rect', { rx:'10', fill:'rgba(11,11,12,.9)', stroke:G.color, 'stroke-width':'1.6' });
-          const tt = mk('text', { fill:'#ffffff', 'font-size':'12.5', 'font-weight':'700' }); tt.textContent = G.label(i);
-          let st = null, up = null, dn = null;
-          if (G.sub) { st = mk('text', { fill:G.color, 'font-size':'10.5', 'font-weight':'600' }); st.textContent = G.sub; }
-          if (G.arrows) {
-            up = mk('polygon', { fill:G.color, stroke:'rgba(0,0,0,.75)', 'stroke-width':'1' });
-            dn = mk('polygon', { fill:G.color, stroke:'rgba(0,0,0,.75)', 'stroke-width':'1' });
-          }
-          tagSvg.appendChild(g);
-          tagEls.push({ key, i, id, abs:a, g, line, dot, pill, tt, st, up, dn, on:false, w:0, h:G.sub ? 40 : 27 });
-        });
-      });
-      tagsBuilt = true;
-    }
-    function setInfo(on) {
-      infoOn = on;
-      if (on && !tagsBuilt) buildTags();
-      if (!on) { mv.querySelectorAll('.ths').forEach(n => n.remove()); tagSvg.innerHTML = ''; tagEls = []; tagsBuilt = false; }
-      $('infoBtn').classList.toggle('on', on);
-      $('icard').style.display = on ? 'block' : 'none';
-    }
-    function drawTags(t) {
-      if (!infoOn || !tagsBuilt) { tagSvg.style.display = 'none'; return; }
-      tagSvg.style.display = 'block';
-      const W = tagSvg.clientWidth || innerWidth, H = tagSvg.clientHeight || innerHeight;
-      let eye, dir;
-      if (mode === 'look') { eye = [px, eyeY(), pz]; dir = [view.dx, view.dy, view.dz]; }
-      else {
-        try {
-          const o = mv.getCameraOrbit(), g = mv.getCameraTarget();
-          eye = [g.x + o.radius * Math.sin(o.phi) * Math.sin(o.theta), g.y + o.radius * Math.cos(o.phi), g.z + o.radius * Math.sin(o.phi) * Math.cos(o.theta)];
-          const l = Math.hypot(g.x - eye[0], g.y - eye[1], g.z - eye[2]) || 1;
-          dir = [(g.x - eye[0]) / l, (g.y - eye[1]) / l, (g.z - eye[2]) / l];
-        } catch (e) { eye = [px, eyeY(), pz]; dir = [view.dx, view.dy, view.dz]; }
-      }
-      // parts of the screen that are covered by buttons / cards: tags stay out of them
-      const sr = tagSvg.getBoundingClientRect(), blk = [];
-      ['icard', 'tcol', 'brand', 'mcard', 'jpanel', 'contact', 'dock'].forEach(id => {
-        const r = $(id).getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) blk.push([r.left - sr.left - 6, r.top - sr.top - 6, r.width + 12, r.height + 12]);
-      });
-      const hit = (x, y, w, h, r) => x < r[0] + r[2] && x + w > r[0] && y < r[1] + r[3] && y + h > r[1];
-      // 1. every point that is in front of us, on the screen and not under a button, grouped by kind
-      const pool = {};
-      for (const e of tagEls) {
-        const h = mv.queryHotspot('hotspot-' + e.id);
-        if (!h) continue;
-        const c = h.canvasPosition, a = e.abs;
-        const ahead = (a[0] - eye[0]) * dir[0] + (a[1] - eye[1]) * dir[1] + (a[2] - eye[2]) * dir[2] > 0.4;
-        if (!ahead || c.x < 6 || c.x > W - 6 || c.y < 70 || c.y > H - 130) continue;
-        if (blk.some(r => hit(c.x - 2, c.y - 2, 4, 4, r))) continue;
-        e.ax = c.x; e.ay = c.y; e.d = Math.hypot(a[0] - eye[0], a[1] - eye[1], a[2] - eye[2]);
-        (pool[e.key] = pool[e.key] || []).push(e);
-      }
-      // 2. keep the nearest few of each kind (a little fewer in the 3D view, where everything is on screen at once)
-      let show = [];
-      for (const key in pool) {
-        const K = mode === 'orbit' ? (INFO[key].K3d || INFO[key].K) : INFO[key].K;
-        show.push(...pool[key].sort((p, q) => p.d - q.d).slice(0, K));
-      }
-      // 3. place each name box next to its point (try up-right, up-left, down-right, down-left) clear of the buttons
-      for (const e of show) {
-        if (!e.w) { e.g.style.display = ''; e.w = Math.max(e.tt.getComputedTextLength(), e.st ? e.st.getComputedTextLength() : 0) + 24; }
-        const spots = [[e.ax + 14, e.ay - e.h - 12], [e.ax - 14 - e.w, e.ay - e.h - 12], [e.ax + 14, e.ay + 12], [e.ax - 14 - e.w, e.ay + 12]];
-        e.px = null;
-        for (const s of spots) {
-          const x = clamp(s[0], 6, W - e.w - 6), y = clamp(s[1], 66, H - 140);
-          if (!blk.some(r => hit(x, y, e.w, e.h, r))) { e.px = x; e.py = y; break; }
-        }
-      }
-      show = show.filter(e => e.px !== null);
-      show.sort((p, q) => p.py - q.py);
-      for (let i = 0; i < show.length; i++) {                      // nudge boxes that would sit on top of each other
-        for (let pass = 0; pass < 3; pass++) for (let k = 0; k < i; k++) {
-          const a = show[i], b = show[k];
-          if (a.px < b.px + b.w + 4 && a.px + a.w + 4 > b.px && a.py < b.py + b.h + 4 && a.py + a.h + 4 > b.py) a.py = b.py + b.h + 5;
-        }
-      }
-      show = show.filter(e => e.py + e.h < H - 130 && !blk.some(r => hit(e.px, e.py, e.w, e.h, r)));
-      for (const e of tagEls) {
-        if (show.includes(e)) { if (!e.on) { e.g.style.display = ''; e.on = true; } }
-        else if (e.on || e.g.style.display !== 'none') { e.g.style.display = 'none'; e.on = false; }
-      }
-      // 4. draw
-      const bob = 3 + 3 * Math.sin(t / 260);
-      for (const e of show) {
-        const lx = clamp(e.ax, e.px, e.px + e.w), ly = clamp(e.ay, e.py, e.py + e.h);
-        e.line.setAttribute('x1', e.ax); e.line.setAttribute('y1', e.ay); e.line.setAttribute('x2', lx); e.line.setAttribute('y2', ly);
-        e.dot.setAttribute('cx', e.ax); e.dot.setAttribute('cy', e.ay);
-        e.pill.setAttribute('x', e.px); e.pill.setAttribute('y', e.py); e.pill.setAttribute('width', e.w); e.pill.setAttribute('height', e.h);
-        e.tt.setAttribute('x', e.px + 12); e.tt.setAttribute('y', e.py + (e.st ? 17 : 18));
-        if (e.st) { e.st.setAttribute('x', e.px + 12); e.st.setAttribute('y', e.py + 32); }
-        if (e.up) {                                                  // the arrows that show the truss moving up / down
-          e.up.setAttribute('points', `${e.ax},${e.ay - 13 - bob} ${e.ax - 6},${e.ay - 5 - bob} ${e.ax + 6},${e.ay - 5 - bob}`);
-          e.dn.setAttribute('points', `${e.ax},${e.ay + 13 + bob} ${e.ax - 6},${e.ay + 5 + bob} ${e.ax + 6},${e.ay + 5 + bob}`);
-        }
-      }
-    }
-    $('infoBtn').addEventListener('click', e => { e.stopPropagation(); setInfo(!infoOn); });
-    // contact line only in the stage view, and not while the joysticks are open
-    function syncUI() {
-      document.documentElement.classList.toggle('orbit', mode === 'orbit');
-      document.documentElement.classList.toggle('joy', $('jpanel').style.display === 'flex');
-    }
-
     // ---------- origin ----------
     // The origin is always the stage centre (SPOT). The button only takes you back there; it never changes it.
     try { localStorage.removeItem('stagePivot'); } catch (e) {}      // forget any pivot saved by the earlier version
@@ -851,7 +645,6 @@
       if (t < settleUntil) applyGood();
       recordOrbit(t);
       drawDims();
-      drawTags(t);
       ledTick(t);
       if (t >= settleUntil) guardView(t);
       requestAnimationFrame(tick);
@@ -907,7 +700,7 @@
         const now = performance.now(); if (now - tt < 30) return; tt = now;
         setFov(f0 * d0 / Math.max(d, 1));              // fingers apart -> smaller angle -> zoom in
       };
-      const onUI = el => !!(el && el.closest && el.closest('#jpanel,#dock,#top,#mcard,#icard,#contact'));
+      const onUI = el => !!(el && el.closest && el.closest('#jpanel,#dock,#top,#mcard'));
       const td = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
       // touch events
       document.addEventListener('touchstart', e => {
@@ -958,7 +751,6 @@
       computeView(); applyView(); dirty = true;
       $('sub').textContent = 'Stage view';
       b3d.classList.remove('on'); bMotion.classList.remove('dim'); bJoy.classList.remove('dim');
-      syncUI();
     }
     // The 3D view's starting camera (same size, position, rotation every time).
     function resetOrbit() {
@@ -991,7 +783,6 @@
       resetOrbit();
       $('sub').textContent = '3D view · drag to rotate';
       b3d.classList.add('on'); bMotion.classList.add('dim'); bJoy.classList.add('dim');
-      syncUI();
     }
     async function toStage() {
       await startSensors();
@@ -1003,7 +794,6 @@
       computeView(); applyView(); dirty = true;
       $('sub').textContent = 'Stage view';
       b3d.classList.remove('on'); bMotion.classList.remove('dim'); bJoy.classList.remove('dim');
-      syncUI();
     }
 
     b3d.addEventListener('click', () => { if (mode === 'look') toOrbit(); else toStage(); });
@@ -1012,7 +802,6 @@
       const open = $('jpanel').style.display !== 'flex';
       $('jpanel').style.display = open ? 'flex' : 'none';
       bJoy.classList.toggle('on', open);
-      syncUI();
     });
     bMotion.addEventListener('click', () => {
       if (mode !== 'look') return;
